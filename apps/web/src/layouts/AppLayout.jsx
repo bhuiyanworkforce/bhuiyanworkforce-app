@@ -72,12 +72,13 @@ export default function AppLayout() {
         <div className="flex items-center gap-3">
           <GlobalSearch />
           <NotificationBell />
+          {/* Hamburger — size reduced to 18 */}
           <button
             onClick={() => setMenuOpen(!menuOpen)}
-            className="text-slate-400 hover:text-slate-200 p-2"
+            className="text-slate-400 hover:text-slate-200 p-1.5"
             aria-label="Toggle menu"
           >
-            {menuOpen ? <X size={20} /> : <Menu size={20} />}
+            {menuOpen ? <X size={18} /> : <Menu size={18} />}
           </button>
         </div>
       </header>
@@ -97,20 +98,25 @@ export default function AppLayout() {
         >
           <div className="flex justify-between items-center mb-8">
             <div className="text-white font-bold text-2xl">Bhuiyan Workforce</div>
-            <button
-              onClick={closeMenu}
-              aria-label="Close menu"
-            >
+            <button onClick={closeMenu} aria-label="Close menu">
               <X size={24} className="text-slate-400" />
             </button>
           </div>
 
-          {/* User Profile */}
+          {/* User Profile — shows real avatar photo if available */}
           <div className="mb-8">
             <div className="flex items-center gap-3">
-              <UserCircle size={48} className="text-slate-500" aria-hidden="true" />
+              {profile?.avatar_url ? (
+                <img
+                  src={profile.avatar_url}
+                  alt="Avatar"
+                  className="w-10 h-10 rounded-full object-cover border border-slate-700"
+                />
+              ) : (
+                <UserCircle size={40} className="text-slate-500" aria-hidden="true" />
+              )}
               <div>
-                <p className="font-semibold text-white">{profile?.fullName}</p>
+                <p className="font-semibold text-white">{profile?.fullName || profile?.full_name}</p>
                 <p className="text-xs text-slate-500 capitalize">{profile?.role}</p>
               </div>
             </div>

@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
-import { User, Phone, Mail, Lock, Save, CheckCircle, AlertCircle, Building } from 'lucide-react'
+import { User, Phone, Mail, Lock, Save, CheckCircle, AlertCircle, Building, Camera } from 'lucide-react'
 
 export default function Profile() {
   const { user } = useAuth()
@@ -12,6 +12,9 @@ export default function Profile() {
   const [changingPassword, setChangingPassword] = useState(false)
   const [toast, setToast] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [avatarUrl, setAvatarUrl] = useState(null)
+  const [uploadingAvatar, setUploadingAvatar] = useState(false)
+  const fileInputRef = useRef(null)
 
   useEffect(() => { if (user) fetchProfile() }, [user])
 
@@ -19,12 +22,28 @@ export default function Profile() {
     const { data } = await supabase.from('profiles').select('*').eq('id', user.id).single()
     setProfile(data)
     setForm({ full_name: data?.full_name || '', phone: data?.phone || '' })
+    setAvatarUrl(data?.avatar_url || null)
     setLoading(false)
   }
 
   function showToast(message, type = 'success') {
     setToast({ message, type })
     setTimeout(() => setToast(null), 3000)
+  }
+
+  async function handleAvatarUpload(e) {
+    const file = e.target.files[0]
+    if (!file) return
+    setUploadingAvatar(true)
+    const ext = file.name.split('.').pop()
+    const path = `avatars/${user.id}.${ext}`
+    const { error: uploadError } = await supabase.storage.from('avatars').upload(path, file, { upsert: true })
+    if (uploadError) { showToast(uploadError.message, 'error'); setUploadingAvatar(false); return }
+    const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(path)
+    const { error: updateError } = await supabase.from('profiles').update({ avatar_url: publicUrl }).eq('id', user.id)
+    if (updateError) showToast(updateError.message, 'error')
+    else { setAvatarUrl(publicUrl); showToast('Avatar updated!') }
+    setUploadingAvatar(false)
   }
 
   async function handleSaveProfile() {
@@ -89,8 +108,23 @@ export default function Profile() {
       </div>
 
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 flex items-center gap-4">
-        <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white font-extrabold text-2xl flex-none shadow-lg shadow-indigo-500/25">
-          {form.full_name?.[0]?.toUpperCase() || 'U'}
+        <div className="relative flex-none">
+          <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarUpload} />
+          {avatarUrl ? (
+            <img src={avatarUrl} alt="Avatar" className="w-16 h-16 rounded-2xl object-cover shadow-lg shadow-indigo-500/25" />
+          ) : (
+            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white font-extrabold text-2xl shadow-lg shadow-indigo-500/25">
+              {form.full_name?.[0]?.toUpperCase() || 'U'}
+            </div>
+          )}
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploadingAvatar}
+            className="absolute -bottom-1 -right-1 w-6 h-6 bg-indigo-500 hover:bg-indigo-400 rounded-full flex items-center justify-center shadow-md"
+            aria-label="Change avatar"
+          >
+            {uploadingAvatar ? <div className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin" /> : <Camera size={12} className="text-white" />}
+          </button>
         </div>
         <div>
           <p className="text-slate-100 font-bold text-lg">{form.full_name}</p>
