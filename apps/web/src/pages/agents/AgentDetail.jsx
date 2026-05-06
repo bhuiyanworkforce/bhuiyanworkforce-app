@@ -1,3 +1,4 @@
+import PropTypes from 'prop-types'
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { X, Users, Wallet, TrendingUp, FileText, Plus } from 'lucide-react'

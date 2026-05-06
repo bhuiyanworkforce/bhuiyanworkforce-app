@@ -1,3 +1,4 @@
+import PropTypes from 'prop-types'
 import { useEffect, useRef } from 'react'
 import { X } from 'lucide-react'
 
