@@ -1,13 +1,11 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 
-// Moved to outer scope (SonarCloud: move signIn to outer scope)
 async function signIn(email, password) {
   const { error } = await supabase.auth.signInWithPassword({ email, password })
   return { error }
 }
 
-// Moved to outer scope (SonarCloud: move signOut to outer scope)
 async function signOut() {
   await supabase.auth.signOut()
 }
@@ -35,11 +33,13 @@ export function useAuth() {
   }, [])
 
   async function fetchProfile(userId) {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('profiles')
       .select('*')
       .eq('id', userId)
       .single()
+    if (error) console.error('PROFILE FETCH ERROR:', JSON.stringify(error))
+    else console.log('PROFILE FETCH OK:', JSON.stringify(data))
     setProfile(data)
     setLoading(false)
   }
