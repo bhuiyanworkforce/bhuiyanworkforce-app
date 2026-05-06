@@ -40,7 +40,8 @@ export default function Profile() {
     const { error: uploadError } = await supabase.storage.from('avatars').upload(path, file, { upsert: true })
     if (uploadError) { showToast(uploadError.message, 'error'); setUploadingAvatar(false); return }
     const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(path)
-    const { error: updateError } = await supabase.auth.updateUser({ data: { avatar_url: publicUrl } })
+    const { error: updateError } = await supabase.from('profiles')
+  .update({ avatar_url: publicUrl }).eq('id', user.id)
     if (updateError) showToast(updateError.message, 'error')
     else { setAvatarUrl(publicUrl); showToast('Avatar updated!') }
     setUploadingAvatar(false)
