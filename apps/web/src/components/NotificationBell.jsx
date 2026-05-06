@@ -1,0 +1,223 @@
+import { useState, useEffect, useRef } from 'react'
+import { supabase } from '../lib/supabase'
+import { Bell, Check, CheckCheck, X } from 'lucide-react'
+
+const TYPE_STYLES = {
+  info:    { bg: 'bg-indigo-500/15', text: 'text-indigo-400',  dot: 'bg-indigo-400'  },
+  success: { bg: 'bg-emerald-500/15',text: 'text-emerald-400', dot: 'bg-emerald-400' },
+  warning: { bg: 'bg-amber-500/15',  text: 'text-amber-400',   dot: 'bg-amber-400'   },
+  error:   { bg: 'bg-red-500/15',    text: 'text-red-400',     dot: 'bg-red-400'     },
+}
+
+// FIX L102: Moved timeAgo to outer scope (was inside component)
+function timeAgo(dateStr) {
+  const diff = Date.now() - new Date(dateStr).getTime()
+  const mins = Math.floor(diff / 60000)
+  if (mins < 1)  return 'just now'
+  if (mins < 60) return `${mins}m ago`
+  const hrs = Math.floor(mins / 60)
+  if (hrs < 24)  return `${hrs}h ago`
+  return `${Math.floor(hrs / 24)}d ago`
+}
+
+// FIX L38: Extracted channel subscription logic to outer scope to reduce nesting depth
+function subscribeToNotifications(userId, onInsert) {
+  return supabase
+    .channel(`notifications:${userId}`)
+    .on('postgres_changes', {
+      event: 'INSERT',
+      schema: 'public',
+      table: 'notifications',
+      filter: `user_id=eq.${userId}`,
+    }, (payload) => {
+      onInsert(payload.new)
+    })
+    .subscribe()
+}
+
+export default function NotificationBell() {
+  const [notifications, setNotifications] = useState([])
+  const [open, setOpen] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [userId, setUserId] = useState(null)
+  const panelRef = useRef(null)
+
+  const unreadCount = notifications.filter(n => n.is_read === false).length
+
+  // FIX L38: init() body is now shallow — channel setup extracted above
+  useEffect(() => {
+    let channel
+
+    async function init() {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+      setUserId(user.id)
+      await fetchNotificationsForUser(user.id)
+
+      channel = subscribeToNotifications(user.id, (newNotification) => {
+        setNotifications(prev => [newNotification, ...prev])
+      })
+    }
+
+    init()
+
+    const interval = setInterval(() => {
+      supabase.auth.getUser().then(({ data: { user } }) => {
+        if (user) fetchNotificationsForUser(user.id)
+      })
+    }, 30000)
+
+    return () => {
+      if (channel) supabase.removeChannel(channel)
+      clearInterval(interval)
+    }
+  }, [])
+
+  useEffect(() => {
+    function handleClick(e) {
+      if (panelRef.current && !panelRef.current.contains(e.target)) {
+        setOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [])
+
+  async function fetchNotificationsForUser(uid) {
+    const { data } = await supabase
+      .from('notifications')
+      .select('*')
+      .eq('user_id', uid)
+      .order('created_at', { ascending: false })
+      .limit(20)
+    setNotifications(data || [])
+  }
+
+  async function markAsRead(id) {
+    await supabase.from('notifications').update({ is_read: true }).eq('id', id)
+    setNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: true } : n))
+  }
+
+  async function markAllAsRead() {
+    if (!userId) return
+    setLoading(true)
+    await supabase.from('notifications').update({ is_read: true })
+      .eq('user_id', userId).eq('is_read', false)
+    setNotifications(prev => prev.map(n => ({ ...n, is_read: true })))
+    setLoading(false)
+  }
+
+  async function deleteNotification(id) {
+    await supabase.from('notifications').delete().eq('id', id)
+    setNotifications(prev => prev.filter(n => n.id !== id))
+  }
+
+  async function clearAllNotifications() {
+    if (!userId) return
+    await supabase.from('notifications').delete().eq('user_id', userId)
+    setNotifications([])
+  }
+
+  // FIX L117: Removed nested template literal — extracted aria-label to a variable
+  const bellAriaLabel = unreadCount > 0
+    ? `Notifications (${unreadCount} unread)`
+    : 'Notifications'
+
+  return (
+    <div className="relative" ref={panelRef}>
+      <button
+        onClick={() => setOpen(!open)}
+        className="relative p-2 text-slate-400 hover:text-slate-200 transition-colors"
+        aria-label={bellAriaLabel}
+      >
+        <Bell size={20} />
+        {unreadCount > 0 && (
+          <span className="absolute top-1 right-1 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center text-[9px] font-extrabold text-white">
+            {unreadCount > 9 ? '9+' : unreadCount}
+          </span>
+        )}
+      </button>
+
+      {open && (
+        <div className="absolute right-0 top-full mt-2 w-80 max-h-[80vh] bg-[#080F1E] border border-slate-800 rounded-2xl shadow-2xl shadow-black/50 overflow-hidden z-50 flex flex-col">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800 flex-none">
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-bold text-slate-200">Notifications</h3>
+              {unreadCount > 0 && (
+                <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                  {unreadCount}
+                </span>
+              )}
+            </div>
+            {unreadCount > 0 && (
+              <button onClick={markAllAsRead} disabled={loading}
+                className="flex items-center gap-1 text-indigo-400 hover:text-indigo-300 text-xs font-semibold transition-colors">
+                <CheckCheck size={13} />Mark all read
+              </button>
+            )}
+          </div>
+
+          <div className="overflow-y-auto flex-1">
+            {notifications.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-slate-600">
+                <Bell size={28} className="mb-3" />
+                <p className="text-sm">No notifications yet</p>
+              </div>
+            ) : (
+              <ul>
+                {notifications.map((n) => {
+                  const style = TYPE_STYLES[n.type] || TYPE_STYLES.info
+                  // FIX L157, L159, L164: Flip negated conditions to positive form
+                  const isUnread = n.is_read === false
+                  return (
+                    <li
+                      key={n.id}
+                      className={`flex items-start gap-3 px-4 py-3 border-b border-slate-800/60 last:border-0 transition-colors ${isUnread ? 'bg-slate-800/30' : ''}`}
+                    >
+                      <div className="flex-none mt-1.5">
+                        {isUnread
+                          ? <div className={`w-2 h-2 rounded-full ${style.dot}`} />
+                          : <div className="w-2 h-2 rounded-full bg-slate-700" />}
+                      </div>
+                      {/* FIX L163: Replaced <div onClick> with <button> for native interactivity + keyboard support */}
+                      <button
+                        type="button"
+                        className={`flex-1 min-w-0 text-left bg-transparent border-0 p-0 cursor-pointer ${isUnread ? '' : 'cursor-default'}`}
+                        onClick={() => isUnread && markAsRead(n.id)}
+                        aria-label={isUnread ? `Mark "${n.title}" as read` : n.title}
+                        tabIndex={isUnread ? 0 : -1}
+                      >
+                        <p className={`text-xs font-bold mb-0.5 ${isUnread ? 'text-slate-200' : 'text-slate-400'}`}>{n.title}</p>
+                        <p className="text-slate-500 text-xs leading-relaxed">{n.message}</p>
+                        <p className="text-slate-600 text-[10px] mt-1">{timeAgo(n.created_at)}</p>
+                      </button>
+                      <div className="flex-none flex items-center gap-1">
+                        {isUnread && (
+                          <button onClick={() => markAsRead(n.id)} className="p-1 text-slate-600 hover:text-indigo-400 transition-colors" title="Mark as read">
+                            <Check size={13} />
+                          </button>
+                        )}
+                        <button onClick={() => deleteNotification(n.id)} className="p-1 text-slate-600 hover:text-red-400 transition-colors" title="Delete">
+                          <X size={13} />
+                        </button>
+                      </div>
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+          </div>
+
+          {notifications.length > 0 && (
+            <div className="px-4 py-3 border-t border-slate-800 flex-none">
+              <button onClick={clearAllNotifications}
+                className="text-xs text-slate-600 hover:text-red-400 font-semibold transition-colors w-full text-center">
+                Clear all notifications
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}

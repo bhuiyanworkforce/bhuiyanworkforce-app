@@ -1,0 +1,14 @@
+name = "bhuiyanworkforce-api"
+main = "src/index.js"
+compatibility_date = "2025-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+ENVIRONMENT = "production"
+CORS_ORIGIN = "https://app.bhuiyanworkforce.com"
+API_URL = "https://api.bhuiyanworkforce.com"
+
+# Secrets added via Cloudflare dashboard:
+# SUPABASE_URL
+# SUPABASE_SERVICE_KEY
+# RESEND_API_KEY
