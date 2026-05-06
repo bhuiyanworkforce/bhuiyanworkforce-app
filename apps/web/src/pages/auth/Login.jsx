@@ -27,7 +27,7 @@ export default function Login() {
           <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white font-bold text-2xl mb-4 shadow-lg shadow-indigo-500/30">
             A
           </div>
-          <h1 className="text-2xl font-extrabold text-slate-100">AgencyOS</h1>
+          <h1 className="text-2xl font-extrabold text-slate-100">Bhuiyan Workforce</h1>
           <p className="text-slate-500 text-sm mt-1">Bhuiyan Workforce Management</p>
         </div>
 

@@ -310,7 +310,7 @@ export default function Dashboard() {
       {stats.totalPassports === 0 && stats.totalCandidates === 0 && (
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-8 flex flex-col items-center text-center">
           <div className="w-16 h-16 rounded-2xl bg-indigo-500/15 flex items-center justify-center mb-4"><Plus size={28} className="text-indigo-400"/></div>
-          <h3 className="text-slate-200 font-bold mb-2">Welcome to AgencyOS</h3>
+          <h3 className="text-slate-200 font-bold mb-2">Welcome to Bhuiyan Workforce</h3>
           <p className="text-slate-500 text-sm mb-5">Start by adding your first candidate and passport</p>
           <button onClick={() => navigate('/candidates')} className="bg-gradient-to-r from-indigo-500 to-violet-600 text-white font-bold px-6 py-3 rounded-xl text-sm">
             Add First Candidate

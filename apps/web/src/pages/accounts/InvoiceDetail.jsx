@@ -146,7 +146,7 @@ export default function InvoiceDetail({ invoice: initialInvoice, onClose, onUpda
       .status{display:inline-block;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;text-transform:uppercase;
       background:${paidBg};color:${paidColor}}
       </style></head><body>
-      <div class="header"><div class="company"><h1>AgencyOS</h1><p>Bhuiyan Workforce Management</p><p>bhuiyanworkforce.com</p></div>
+      <div class="header"><div class="company"><h1>Bhuiyan Workforce</h1><p>Bhuiyan Workforce Management</p><p>bhuiyanworkforce.com</p></div>
       <div class="invoice-info"><h2>${invoice.invoice_no}</h2><p>Date: ${new Date(invoice.issued_at).toLocaleDateString()}</p>
       ${dueLine}<br/><span class="status">${invoice.status}</span></div></div>
       <div class="candidate"><h3>Bill To</h3><p>${invoice.candidates?.full_name || 'N/A'}</p></div>

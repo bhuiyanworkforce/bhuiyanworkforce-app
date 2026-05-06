@@ -191,7 +191,7 @@ export default function Profile() {
         <h2 className="text-sm font-bold text-slate-300 mb-4">App Information</h2>
         <div className="flex flex-col gap-3">
           {[
-            { label: 'App Name', value: 'AgencyOS' },
+            { label: 'App Name', value: 'Bhuiyan Workforce' },
             { label: 'Company', value: 'Bhuiyan Workforce Management' },
             { label: 'Version', value: '1.0.0' },
             { label: 'Domain', value: 'app.bhuiyanworkforce.com' },
