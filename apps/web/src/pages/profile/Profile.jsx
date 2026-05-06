@@ -22,7 +22,7 @@ export default function Profile() {
     const { data } = await supabase.from('profiles').select('*').eq('id', user.id).single()
     setProfile(data)
     setForm({ full_name: data?.full_name || '', phone: data?.phone || '' })
-    setAvatarUrl(data?.avatar_url || null)
+    setAvatarUrl(data?.avatar_url || user?.user_metadata?.avatar_url || null)
     setLoading(false)
   }
 
@@ -40,7 +40,7 @@ export default function Profile() {
     const { error: uploadError } = await supabase.storage.from('avatars').upload(path, file, { upsert: true })
     if (uploadError) { showToast(uploadError.message, 'error'); setUploadingAvatar(false); return }
     const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(path)
-    const { error: updateError } = await supabase.from('profiles').update({ avatar_url: publicUrl }).eq('id', user.id)
+    const { error: updateError } = await supabase.auth.updateUser({ data: { avatar_url: publicUrl } })
     if (updateError) showToast(updateError.message, 'error')
     else { setAvatarUrl(publicUrl); showToast('Avatar updated!') }
     setUploadingAvatar(false)
