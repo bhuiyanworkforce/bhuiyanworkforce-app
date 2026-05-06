@@ -192,7 +192,7 @@ export default function Profile() {
         <div className="flex flex-col gap-3">
           {[
             { label: 'App Name', value: 'Bhuiyan Workforce' },
-            { label: 'Company', value: 'Bhuiyan Workforce Management' },
+            { label: 'Company', value: 'Bhuiyan Workforce Ltd.' },
             { label: 'Version', value: '1.0.0' },
             { label: 'Domain', value: 'app.bhuiyanworkforce.com' },
             { label: 'Database', value: 'Supabase (Singapore)' },
