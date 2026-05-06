@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import PropTypes from 'prop-types'
 import { supabase } from '../../lib/supabase'
 import { Plus, Search, TrendingDown, X } from 'lucide-react'
 
@@ -90,11 +89,6 @@ function AddExpenseModal({ onClose, onSaved }) {
       </div>
     </div>
   )
-}
-
-AddExpenseModal.propTypes = {
-  onClose: PropTypes.func.isRequired,
-  onSaved: PropTypes.func.isRequired,
 }
 
 export default function Expenses() {
