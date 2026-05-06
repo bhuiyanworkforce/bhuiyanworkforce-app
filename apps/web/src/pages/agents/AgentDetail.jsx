@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { X, Users, Wallet, TrendingUp, FileText, Plus } from 'lucide-react'
-import PropTypes from 'prop-types'
 
 export default function AgentDetail({ agent, onClose }) {
   const [candidates, setCandidates] = useState([])

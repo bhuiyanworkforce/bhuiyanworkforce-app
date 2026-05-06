@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import PropTypes from "prop-types";
 import { supabase } from "../../lib/supabase";
 import { Plus, X } from "lucide-react";
 

@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { Plus, X, Users, ChevronRight, ToggleLeft, ToggleRight } from 'lucide-react'
-import PropTypes from 'prop-types'
 
 const ROLES = ['manager', 'accountant', 'visa_officer', 'passport_officer', 'receptionist', 'driver', 'peon', 'other']
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']

@@ -91,6 +91,11 @@ function AddExpenseModal({ onClose, onSaved }) {
   )
 }
 
+AddExpenseModal.propTypes = {
+  onClose: PropTypes.func.isRequired,
+  onSaved: PropTypes.func.isRequired,
+}
+
 export default function Expenses() {
   const [expenses, setExpenses] = useState([])
   const [loading, setLoading] = useState(true)
