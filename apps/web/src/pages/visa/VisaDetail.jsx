@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import PropTypes from 'prop-types'
 import { supabase } from '../../lib/supabase'
 import { X, CheckCircle, Circle, Clock, AlertCircle, Edit2, Save } from 'lucide-react'
 

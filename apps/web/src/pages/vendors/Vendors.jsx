@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { Plus, Search, Building2, X, ChevronRight } from 'lucide-react'
+import PropTypes from 'prop-types'
 
 const VCATEGORIES = ['general','embassy','medical','travel','printing','bank','other']
 

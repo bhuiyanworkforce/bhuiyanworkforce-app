@@ -1,3 +1,4 @@
+import PropTypes from 'prop-types'
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { X, Stamp, Receipt, Phone, Globe, Calendar, Paperclip, Trash2, ChevronDown, Edit2 } from 'lucide-react'

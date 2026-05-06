@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import PropTypes from 'prop-types'
 import { supabase } from '../../lib/supabase'
 import { Plus, Search, TrendingDown, X } from 'lucide-react'
 

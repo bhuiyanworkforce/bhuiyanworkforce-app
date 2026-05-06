@@ -1,3 +1,4 @@
+import PropTypes from 'prop-types'
 import { useRef, useState } from 'react'
 import { Camera, Upload, X, Loader } from 'lucide-react'
 

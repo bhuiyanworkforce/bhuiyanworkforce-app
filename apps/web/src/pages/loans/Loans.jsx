@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { Plus, X, ChevronDown, ChevronUp } from 'lucide-react'
+import PropTypes from 'prop-types'
 
 const STATUS_COLOR = { active:'bg-amber-500/15 text-amber-400', repaid:'bg-emerald-500/15 text-emerald-400', partial:'bg-blue-500/15 text-blue-400' }
 

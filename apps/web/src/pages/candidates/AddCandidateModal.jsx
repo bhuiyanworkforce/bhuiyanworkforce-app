@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import PropTypes from 'prop-types'
 import { supabase } from '../../lib/supabase'
 import Modal from '../../components/Modal'
 
