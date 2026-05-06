@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useNavigate } from 'react-router-dom'
 import {
   Stamp, FileText, Users, Wallet,
   AlertTriangle, TrendingUp, Plus,
-  ChevronRight, Clock
+  ChevronRight, Clock, RefreshCw
 } from 'lucide-react'
 
 const WORKFLOW_STAGES = [
@@ -43,6 +43,30 @@ export default function Dashboard() {
   const [workflowCounts, setWorkflowCounts] = useState([])
   const [expiringPassports, setExpiringPassports] = useState([])
   const [recentActivity, setRecentActivity] = useState([])
+  const [pullY, setPullY] = useState(0)
+  const [isPulling, setIsPulling] = useState(false)
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  const touchStartY = useRef(0)
+  const PULL_THRESHOLD = 70
+
+  const handleTouchStart = useCallback(e => {
+    if (window.scrollY === 0) touchStartY.current = e.touches[0].clientY
+  }, [])
+
+  const handleTouchMove = useCallback(e => {
+    if (touchStartY.current === 0) return
+    const dy = e.touches[0].clientY - touchStartY.current
+    if (dy > 0 && window.scrollY === 0) { setIsPulling(true); setPullY(Math.min(dy * 0.4, 80)) }
+  }, [])
+
+  const handleTouchEnd = useCallback(async () => {
+    if (pullY >= PULL_THRESHOLD) {
+      setIsRefreshing(true); setPullY(0); setIsPulling(false)
+      await fetchAll()
+      setIsRefreshing(false)
+    } else { setPullY(0); setIsPulling(false) }
+    touchStartY.current = 0
+  }, [pullY])
 
   useEffect(() => { fetchAll() }, [])
 
@@ -152,7 +176,18 @@ export default function Dashboard() {
   )
 
   return (
-    <div className="flex flex-col gap-5">
+    <div
+      className="flex flex-col gap-5"
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+      style={{ transform: isPulling || isRefreshing ? `translateY(${pullY}px)` : undefined, transition: isPulling ? 'none' : 'transform 0.3s ease' }}
+    >
+      {(isPulling || isRefreshing) && (
+        <div className="flex justify-center py-2 -mt-8">
+          <RefreshCw size={20} className={`text-indigo-400 ${isRefreshing ? 'animate-spin' : ''}`} style={{ transform: `rotate(${Math.min(pullY / PULL_THRESHOLD * 180, 180)}deg)` }} />
+        </div>
+      )}
       <div>
         <h1 className="text-2xl font-extrabold text-slate-100">Dashboard</h1>
         <p className="text-slate-500 text-sm mt-0.5">

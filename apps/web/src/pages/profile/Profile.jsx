@@ -16,8 +16,8 @@ export default function Profile() {
   useEffect(() => { if (user) fetchProfile() }, [user])
 
   async function fetchProfile() {
-    const { data } = await supabase.from('profiles').select('*').eq('id', user.id).single()
-    setProfile(data)
+    const { data } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle()
+    setProfile(data || null)
     setForm({ full_name: data?.full_name || '', phone: data?.phone || '' })
     setLoading(false)
   }
@@ -32,7 +32,7 @@ export default function Profile() {
     if (!user) return
     setSaving(true)
     const { error } = await supabase.from('profiles')
-      .update({ full_name: form.full_name, phone: form.phone }).eq('id', user.id)
+      .upsert({ id: user.id, full_name: form.full_name, phone: form.phone }, { onConflict: 'id' })
     if (error) showToast(error.message, 'error')
     else showToast('Profile updated successfully!')
     setSaving(false)

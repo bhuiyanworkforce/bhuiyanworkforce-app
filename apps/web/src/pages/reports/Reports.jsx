@@ -122,27 +122,31 @@ export default function Reports() {
 
   async function fetchProfitability() {
     setProfitLoading(true)
-    const from = getFromISO().split('T')[0]
-    const [{ data: invoices }, { data: agents }, { data: refunds }] = await Promise.all([
-      supabase.from('invoices').select('id, total, status, candidate_id, agent_id, candidates(full_name)').gte('issued_at', from),
-      supabase.from('agents').select('id, commission_rate'),
-      supabase.from('refunds').select('amount, candidate_id').gte('refund_date', from),
-    ])
-    const agentMap = Object.fromEntries((agents || []).map(a => [a.id, Number.parseFloat(a.commission_rate) || 0]))
-    const candidateMap = {}
-    ;(invoices || []).forEach(inv => {
-      const cid = inv.candidate_id; if (!cid) return
-      if (!candidateMap[cid]) candidateMap[cid] = { id: cid, name: inv.candidates?.full_name || 'Unknown', revenue: 0, commission: 0, refunds: 0, invoiceCount: 0 }
-      const total = Number.parseFloat(inv.total) || 0
-      if (inv.status === 'paid') { candidateMap[cid].revenue += total; candidateMap[cid].commission += (total * (agentMap[inv.agent_id] || 0)) / 100 }
-      candidateMap[cid].invoiceCount += 1
-    })
-    ;(refunds || []).forEach(r => { if (r.candidate_id && candidateMap[r.candidate_id]) candidateMap[r.candidate_id].refunds += Number.parseFloat(r.amount) || 0 })
-    setProfitData(Object.values(candidateMap).map(c => ({ ...c, profit: c.revenue - c.commission - c.refunds })).sort((a, b) => b.profit - a.profit))
-    setProfitLoading(false)
+    try {
+      const from = getFromISO().split('T')[0]
+      const to = getToISO().split('T')[0]
+      const [{ data: invoices, error: invErr }, { data: agents }, { data: refunds }] = await Promise.all([
+        supabase.from('invoices').select('id, total, status, candidate_id, agent_id, candidates(full_name)').gte('issued_at', from).lte('issued_at', to),
+        supabase.from('agents').select('id, commission_rate'),
+        supabase.from('refunds').select('amount, candidate_id').gte('refund_date', from),
+      ])
+      if (invErr) { setProfitLoading(false); return }
+      const agentMap = Object.fromEntries((agents || []).map(a => [a.id, Number.parseFloat(a.commission_rate) || 0]))
+      const candidateMap = {}
+      ;(invoices || []).forEach(inv => {
+        const cid = inv.candidate_id; if (!cid) return
+        if (!candidateMap[cid]) candidateMap[cid] = { id: cid, name: inv.candidates?.full_name || 'Unknown', revenue: 0, commission: 0, refunds: 0, invoiceCount: 0 }
+        const total = Number.parseFloat(inv.total) || 0
+        if (inv.status === 'paid') { candidateMap[cid].revenue += total; candidateMap[cid].commission += (total * (agentMap[inv.agent_id] || 0)) / 100 }
+        candidateMap[cid].invoiceCount += 1
+      })
+      ;(refunds || []).forEach(r => { if (r.candidate_id && candidateMap[r.candidate_id]) candidateMap[r.candidate_id].refunds += Number.parseFloat(r.amount) || 0 })
+      setProfitData(Object.values(candidateMap).map(c => ({ ...c, profit: c.revenue - c.commission - c.refunds })).sort((a, b) => b.profit - a.profit))
+    } catch (err) { console.error('fetchProfitability error:', err) }
+    finally { setProfitLoading(false) }
   }
 
-  function applyCustom() { setShowCustom(false); fetchReports() }
+  function applyCustom() { setShowCustom(false); fetchReports(); if (activeTab === 'profit') fetchProfitability() }
   function clearCustom() { setCustomFrom(''); setCustomTo(''); setPeriod('month'); setShowCustom(false) }
 
   function exportAgentsCSV() { exportCSV(data.agentPerformance.map(a => ({ Agent: a.full_name, 'Commission Rate': a.commission_rate+'%', 'Total Revenue': a.revenue, 'Commission Due': a.commission, Invoices: a.invoiceCount })), 'agent-performance') }
