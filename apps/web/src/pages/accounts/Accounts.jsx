@@ -5,8 +5,6 @@ import { Plus, Receipt, AlertTriangle, Search } from 'lucide-react'
 import CreateInvoiceModal from './CreateInvoiceModal'
 import InvoiceDetail from './InvoiceDetail'
 
-const PAGE_SIZE = 20
-
 const STATUS_COLOR = {
   unpaid: 'bg-red-500/15 text-red-400',
   partial: 'bg-amber-500/15 text-amber-400',
@@ -24,13 +22,11 @@ export default function Accounts() {
   const location = useLocation()
   const [invoices, setInvoices] = useState([])
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
   const [showCreate, setShowCreate] = useState(false)
   const [selected, setSelected] = useState(null)
   const [totals, setTotals] = useState({ paid: 0, unpaid: 0 })
   const [filter, setFilter] = useState('all')
   const [search, setSearch] = useState('')
-  const [page, setPage] = useState(1)
 
   useEffect(() => {
     fetchInvoices()
@@ -44,13 +40,11 @@ export default function Accounts() {
   }, [location.state])
 
   async function fetchInvoices() {
-    setError(null)
-    const { data, error: fetchError } = await supabase
+    const { data } = await supabase
       .from('invoices')
       .select('*, candidates(full_name)')
       .order('issued_at', { ascending: false })
 
-    if (fetchError) { setError('Failed to load invoices. Tap Retry.'); setLoading(false); return }
     const inv = data || []
     setInvoices(inv)
     setTotals({
@@ -65,9 +59,6 @@ export default function Accounts() {
     setSelected(prev => ({ ...prev, status: newStatus, receipt_no: receiptNo || prev.receipt_no }))
     fetchInvoices()
   }
-
-  function handleFilterChange(key) { setFilter(key); setPage(1) }
-  function handleSearchChange(e) { setSearch(e.target.value); setPage(1) }
 
   const overdue = invoices.filter(isOverdue)
   const overdueTotal = overdue.reduce((s, i) => s + (Number(i.total) || 0), 0)
@@ -89,9 +80,6 @@ export default function Accounts() {
 
     return matchSearch && matchFilter
   })
-
-  const totalPages = Math.ceil(filtered.length / PAGE_SIZE)
-  const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
   function getOverdueLabel() {
     const count = overdue.length
@@ -134,7 +122,7 @@ export default function Accounts() {
           <input
             id="invoice-search"
             value={search}
-            onChange={handleSearchChange}
+            onChange={e => setSearch(e.target.value)}
             placeholder="Search by invoice no or candidate..."
             className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-9 pr-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500"
           />
@@ -143,7 +131,7 @@ export default function Accounts() {
         {overdue.length > 0 && (
           <button
             type="button"
-            onClick={() => handleFilterChange('overdue')}
+            onClick={() => setFilter('overdue')}
             className="bg-red-500/10 border border-red-500/30 rounded-2xl px-4 py-3 flex items-center gap-3 w-full text-left"
           >
             <AlertTriangle size={18} className="text-red-400 flex-none" />
@@ -169,7 +157,7 @@ export default function Accounts() {
           {['all', 'unpaid', 'partial', 'overdue', 'paid'].map(key => (
             <button
               key={key}
-              onClick={() => handleFilterChange(key)}
+              onClick={() => setFilter(key)}
               className={`flex-none px-3 py-1.5 rounded-full text-xs font-bold transition-colors ${getFilterButtonClass(key)}`}
             >
               {getFilterLabel(key)}
@@ -181,11 +169,6 @@ export default function Accounts() {
           <div className="flex justify-center py-12">
             <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
           </div>
-        ) : error ? (
-          <div className="flex flex-col items-center justify-center py-12 gap-3">
-            <p className="text-red-400 text-sm text-center">{error}</p>
-            <button onClick={fetchInvoices} className="bg-indigo-500 text-white font-bold px-5 py-2.5 rounded-xl text-sm">Retry</button>
-          </div>
         ) : (
           <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
             {filtered.length === 0 ? (
@@ -195,64 +178,43 @@ export default function Accounts() {
                 {!search && <button onClick={() => setShowCreate(true)} className="mt-4 text-indigo-400 text-sm font-semibold">Create your first invoice</button>}
               </div>
             ) : (
-              <>
-                <ul>
-                  {paginated.map((inv, i) => (
-                    <li
-                      key={inv.id}
-                      className={`flex items-center justify-between px-4 py-4 cursor-pointer active:bg-slate-800 transition-colors ${
-                        i < paginated.length - 1 ? 'border-b border-slate-800' : ''
-                      }`}
-                    >
-                      <button
-                        type="button"
-                        className="contents"
-                        onClick={() => setSelected(inv)}
-                        onKeyDown={e => e.key === 'Enter' && setSelected(inv)}
-                      >
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <p className="text-indigo-400 text-xs font-mono font-semibold">{inv.invoice_no}</p>
-                            {isOverdue(inv) && <AlertTriangle size={11} className="text-red-400" />}
-                          </div>
-                          <p className="text-slate-200 text-sm font-semibold mt-0.5">{inv.candidates?.full_name}</p>
-                          <p className="text-slate-500 text-xs">
-                            {new Date(inv.issued_at).toLocaleDateString()}
-                            {inv.due_date && isOverdue(inv) && (
-                              <span className="text-red-400 ml-1.5">• due {new Date(inv.due_date).toLocaleDateString()}</span>
-                            )}
-                          </p>
-                        </div>
-                        <div className="flex flex-col items-end gap-1.5">
-                          <p className="text-slate-100 text-sm font-bold">৳{(Number(inv.total) || 0).toLocaleString()}</p>
-                          <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${STATUS_COLOR[inv.status] || 'bg-slate-700 text-slate-300'}`}>
-                            {inv.status}
-                          </span>
-                        </div>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-                {totalPages > 1 && (
-                  <div className="flex items-center justify-between px-4 py-3 border-t border-slate-800">
+              <ul>
+                {filtered.map((inv, i) => (
+                  <li
+                    key={inv.id}
+                    className={`flex items-center justify-between px-4 py-4 cursor-pointer active:bg-slate-800 transition-colors ${
+                      i < filtered.length - 1 ? 'border-b border-slate-800' : ''
+                    }`}
+                  >
                     <button
-                      onClick={() => setPage(p => Math.max(1, p - 1))}
-                      disabled={page === 1}
-                      className="px-3 py-1.5 rounded-lg text-xs font-bold text-slate-400 bg-slate-800 disabled:opacity-30"
+                      type="button"
+                      className="contents"
+                      onClick={() => setSelected(inv)}
+                      onKeyDown={e => e.key === 'Enter' && setSelected(inv)}
                     >
-                      ← Prev
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <p className="text-indigo-400 text-xs font-mono font-semibold">{inv.invoice_no}</p>
+                          {isOverdue(inv) && <AlertTriangle size={11} className="text-red-400" />}
+                        </div>
+                        <p className="text-slate-200 text-sm font-semibold mt-0.5">{inv.candidates?.full_name}</p>
+                        <p className="text-slate-500 text-xs">
+                          {new Date(inv.issued_at).toLocaleDateString()}
+                          {inv.due_date && isOverdue(inv) && (
+                            <span className="text-red-400 ml-1.5">• due {new Date(inv.due_date).toLocaleDateString()}</span>
+                          )}
+                        </p>
+                      </div>
+                      <div className="flex flex-col items-end gap-1.5">
+                        <p className="text-slate-100 text-sm font-bold">৳{(Number(inv.total) || 0).toLocaleString()}</p>
+                        <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${STATUS_COLOR[inv.status] || 'bg-slate-700 text-slate-300'}`}>
+                          {inv.status}
+                        </span>
+                      </div>
                     </button>
-                    <span className="text-slate-500 text-xs">{page} / {totalPages} · {filtered.length} invoices</span>
-                    <button
-                      onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                      disabled={page === totalPages}
-                      className="px-3 py-1.5 rounded-lg text-xs font-bold text-slate-400 bg-slate-800 disabled:opacity-30"
-                    >
-                      Next →
-                    </button>
-                  </div>
-                )}
-              </>
+                  </li>
+                ))}
+              </ul>
             )}
           </div>
         )}

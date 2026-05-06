@@ -40,7 +40,6 @@ export default function Candidates() {
   const [showAdd, setShowAdd] = useState(false)
   const [selected, setSelected] = useState(null)
   const [stageCounts, setStageCounts] = useState({})
-  const [error, setError] = useState(null)
 
   // Auto-open from global search
   useEffect(() => {
@@ -50,30 +49,22 @@ export default function Candidates() {
     }
   }, [location.state])
 
-  // Fetch stage counts separately (always full picture, refreshes on search too)
-  const fetchStageCounts = useCallback(async (searchTerm) => {
-    let query = supabase.from('candidates').select('status')
-    if (searchTerm && searchTerm.trim()) {
-      query = query.or(`full_name.ilike.%${searchTerm}%,phone.ilike.%${searchTerm}%`)
-    }
-    const { data } = await query
-    const counts = {}
-    data?.forEach(c => {
-      const s = c.status || 'new'
-      counts[s] = (counts[s] || 0) + 1
-    })
-    setStageCounts(counts)
-  }, [])
-
+  // Fetch stage counts separately (always full picture)
   useEffect(() => {
-    fetchStageCounts(search)
-  }, [search])
+    supabase.from('candidates').select('status').then(({ data }) => {
+      const counts = {}
+      data?.forEach(c => {
+        const s = c.status || 'new'
+        counts[s] = (counts[s] || 0) + 1
+      })
+      setStageCounts(counts)
+    })
+  }, [])
 
   // Main fetch: reset when filter/search changes
   const fetchCandidates = useCallback(async (searchTerm, stage, newOffset = 0) => {
     if (newOffset === 0) setLoading(true)
     else setSearching(true)
-    setError(null)
 
     let query = supabase
       .from('candidates')
@@ -88,13 +79,7 @@ export default function Candidates() {
       query = query.or(`full_name.ilike.%${searchTerm}%,phone.ilike.%${searchTerm}%`)
     }
 
-    const { data, error: fetchError } = await query
-    if (fetchError) {
-      setError('Failed to load candidates. Tap to retry.')
-      setLoading(false)
-      setSearching(false)
-      return
-    }
+    const { data } = await query
     const results = data || []
 
     if (newOffset === 0) {
@@ -160,11 +145,6 @@ export default function Candidates() {
           <div className="flex justify-center py-12">
             <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
           </div>
-        ) : error ? (
-          <div className="flex flex-col items-center justify-center py-12 gap-3">
-            <p className="text-red-400 text-sm text-center">{error}</p>
-            <button onClick={() => fetchCandidates(search, filterStage, 0)} className="bg-indigo-500 text-white font-bold px-5 py-2.5 rounded-xl text-sm">Retry</button>
-          </div>
         ) : (
           <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
             {candidates.length === 0 ? (
@@ -226,7 +206,11 @@ export default function Candidates() {
         onSaved={() => {
           setShowAdd(false)
           fetchCandidates(search, filterStage, 0)
-          fetchStageCounts(search)
+          supabase.from('candidates').select('status').then(({ data }) => {
+            const counts = {}
+            data?.forEach(c => { const s = c.status || 'new'; counts[s] = (counts[s] || 0) + 1 })
+            setStageCounts(counts)
+          })
         }}
       />
 
