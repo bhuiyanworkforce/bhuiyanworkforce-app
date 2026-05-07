@@ -91,7 +91,7 @@ export default function AppLayout() {
         aria-label="Close menu overlay"
       >
         <div
-          className="fixed inset-y-0 left-0 w-80 bg-[#08050F] border-r border-slate-800 p-6 overflow-y-auto"
+          className="fixed inset-y-0 right-0 w-64 bg-[#08050F] border-l border-slate-800 p-5 overflow-y-auto"
           onClick={(e) => e.stopPropagation()}
           onKeyDown={(e) => e.stopPropagation()}
           role="presentation"
