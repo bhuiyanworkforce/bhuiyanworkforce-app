@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useLocation } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
-import { Plus, Search, ChevronRight } from 'lucide-react'
+import { Plus, Search, ChevronRight, RefreshCw } from 'lucide-react'
 import AddCandidateModal from './AddCandidateModal'
 import CandidateDetail from './CandidateDetail'
 
@@ -33,6 +33,7 @@ export default function Candidates() {
   const [candidates, setCandidates] = useState([])
   const [loading, setLoading] = useState(true)
   const [searching, setSearching] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
   const [offset, setOffset] = useState(0)
   const [hasMore, setHasMore] = useState(true)
   const [search, setSearch] = useState('')
@@ -40,8 +41,8 @@ export default function Candidates() {
   const [showAdd, setShowAdd] = useState(false)
   const [selected, setSelected] = useState(null)
   const [stageCounts, setStageCounts] = useState({})
+  const [error, setError] = useState(null)
 
-  // Auto-open from global search
   useEffect(() => {
     if (location.state?.openId && location.state?.openData) {
       setSelected(location.state.openData)
@@ -49,59 +50,66 @@ export default function Candidates() {
     }
   }, [location.state])
 
-  // Fetch stage counts separately (always full picture)
-  useEffect(() => {
-    supabase.from('candidates').select('status').then(({ data }) => {
-      const counts = {}
-      data?.forEach(c => {
-        const s = c.status || 'new'
-        counts[s] = (counts[s] || 0) + 1
-      })
-      setStageCounts(counts)
+  const fetchStageCounts = useCallback(async () => {
+    const { data } = await supabase.from('candidates').select('status')
+    const counts = {}
+    data?.forEach(c => {
+      const s = c.status || 'new'
+      counts[s] = (counts[s] || 0) + 1
     })
+    setStageCounts(counts)
   }, [])
 
-  // Main fetch: reset when filter/search changes
+  useEffect(() => { fetchStageCounts() }, [fetchStageCounts])
+
   const fetchCandidates = useCallback(async (searchTerm, stage, newOffset = 0) => {
     if (newOffset === 0) setLoading(true)
     else setSearching(true)
+    setError(null)
 
-    let query = supabase
-      .from('candidates')
-      .select('*, agents(full_name)')
-      .order('created_at', { ascending: false })
-      .range(newOffset, newOffset + PAGE_SIZE - 1)
+    try {
+      let query = supabase
+        .from('candidates')
+        .select('*, agents(full_name)')
+        .order('created_at', { ascending: false })
+        .range(newOffset, newOffset + PAGE_SIZE - 1)
 
-    if (stage && stage !== 'all') {
-      query = query.eq('status', stage)
+      if (stage && stage !== 'all') query = query.eq('status', stage)
+      if (searchTerm?.trim()) query = query.or(`full_name.ilike.%${searchTerm}%,phone.ilike.%${searchTerm}%`)
+
+      const { data, error: err } = await query
+      if (err) throw err
+      const results = data || []
+
+      if (newOffset === 0) setCandidates(results)
+      else setCandidates(prev => [...prev, ...results])
+
+      setHasMore(results.length === PAGE_SIZE)
+      setOffset(newOffset)
+    } catch {
+      setError('Failed to load candidates. Tap refresh to try again.')
+    } finally {
+      setLoading(false)
+      setSearching(false)
     }
-    if (searchTerm && searchTerm.trim()) {
-      query = query.or(`full_name.ilike.%${searchTerm}%,phone.ilike.%${searchTerm}%`)
-    }
-
-    const { data } = await query
-    const results = data || []
-
-    if (newOffset === 0) {
-      setCandidates(results)
-    } else {
-      setCandidates(prev => [...prev, ...results])
-    }
-    setHasMore(results.length === PAGE_SIZE)
-    setOffset(newOffset)
-    setLoading(false)
-    setSearching(false)
   }, [])
 
-  // Debounced search
   useEffect(() => {
     const t = setTimeout(() => fetchCandidates(search, filterStage, 0), 300)
     return () => clearTimeout(t)
-  }, [search, filterStage])
+  }, [search, filterStage, fetchCandidates])
+
+  async function handleRefresh() {
+    setRefreshing(true)
+    await Promise.all([
+      fetchCandidates(search, filterStage, 0),
+      fetchStageCounts(),
+    ])
+    setRefreshing(false)
+  }
 
   async function loadMore() {
-    const nextOffset = offset + PAGE_SIZE
-    await fetchCandidates(search, filterStage, nextOffset)
+    await fetchCandidates(search, filterStage, offset + PAGE_SIZE)
   }
 
   const totalCount = Object.values(stageCounts).reduce((a, b) => a + b, 0)
@@ -112,12 +120,18 @@ export default function Candidates() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-extrabold text-slate-100">Candidates</h1>
-            <p className="text-slate-500 text-sm">{candidates.length} shown</p>
+            <p className="text-slate-500 text-sm">{totalCount} total</p>
           </div>
-          <button onClick={() => setShowAdd(true)}
-            className="flex items-center gap-2 bg-gradient-to-r from-emerald-500 to-teal-600 text-white px-4 py-2.5 rounded-xl text-sm font-bold shadow-lg">
-            <Plus size={16} /> Add
-          </button>
+          <div className="flex items-center gap-2">
+            <button onClick={handleRefresh} disabled={refreshing}
+              className="p-2 rounded-xl bg-slate-800 text-slate-400 disabled:opacity-50">
+              <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
+            </button>
+            <button onClick={() => setShowAdd(true)}
+              className="flex items-center gap-2 bg-gradient-to-r from-emerald-500 to-teal-600 text-white px-4 py-2.5 rounded-xl text-sm font-bold shadow-lg">
+              <Plus size={16} /> Add
+            </button>
+          </div>
         </div>
 
         <div className="relative">
@@ -128,7 +142,7 @@ export default function Candidates() {
             className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-9 pr-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500" />
         </div>
 
-        <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+        <div className="flex gap-2 overflow-x-auto pb-1">
           <button onClick={() => setFilterStage('all')}
             className={`flex-none px-3 py-1.5 rounded-full text-xs font-bold transition-colors ${filterStage === 'all' ? 'bg-indigo-500 text-white' : 'bg-slate-800 text-slate-400'}`}>
             All {totalCount > 0 && `(${totalCount})`}
@@ -141,7 +155,12 @@ export default function Candidates() {
           ))}
         </div>
 
-        {loading ? (
+        {error ? (
+          <div className="flex flex-col items-center justify-center py-12 gap-3">
+            <p className="text-red-400 text-sm text-center">{error}</p>
+            <button onClick={handleRefresh} className="bg-indigo-500 text-white font-bold px-5 py-2.5 rounded-xl text-sm">Retry</button>
+          </div>
+        ) : loading ? (
           <div className="flex justify-center py-12">
             <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
           </div>
@@ -162,12 +181,7 @@ export default function Candidates() {
                   {candidates.map((c, i) => (
                     <li key={c.id}
                       className={`flex items-center gap-3 px-4 py-4 transition-colors ${i < candidates.length - 1 ? 'border-b border-slate-800' : ''}`}>
-                      <button
-                        type="button"
-                        className="contents cursor-pointer"
-                        onClick={() => setSelected(c)}
-                        onKeyDown={e => e.key === 'Enter' && setSelected(c)}
-                      >
+                      <button type="button" className="contents cursor-pointer" onClick={() => setSelected(c)}>
                         <div className="w-10 h-10 rounded-full bg-emerald-500/15 flex items-center justify-center text-emerald-400 font-bold text-sm flex-none">
                           {c.full_name?.[0]?.toUpperCase()}
                         </div>
@@ -206,11 +220,7 @@ export default function Candidates() {
         onSaved={() => {
           setShowAdd(false)
           fetchCandidates(search, filterStage, 0)
-          supabase.from('candidates').select('status').then(({ data }) => {
-            const counts = {}
-            data?.forEach(c => { const s = c.status || 'new'; counts[s] = (counts[s] || 0) + 1 })
-            setStageCounts(counts)
-          })
+          fetchStageCounts()
         }}
       />
 
@@ -220,6 +230,7 @@ export default function Candidates() {
           onClose={() => {
             setSelected(null)
             fetchCandidates(search, filterStage, 0)
+            fetchStageCounts()
           }}
         />
       )}

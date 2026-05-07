@@ -1,9 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useLocation } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
-import { Plus, Receipt, AlertTriangle, Search } from 'lucide-react'
+import { Plus, Receipt, AlertTriangle, Search, RefreshCw } from 'lucide-react'
 import CreateInvoiceModal from './CreateInvoiceModal'
 import InvoiceDetail from './InvoiceDetail'
+
+const PAGE_SIZE = 20
 
 const STATUS_COLOR = {
   unpaid: 'bg-red-500/15 text-red-400',
@@ -22,15 +24,18 @@ export default function Accounts() {
   const location = useLocation()
   const [invoices, setInvoices] = useState([])
   const [loading, setLoading] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
+  const [error, setError] = useState(null)
   const [showCreate, setShowCreate] = useState(false)
   const [selected, setSelected] = useState(null)
   const [totals, setTotals] = useState({ paid: 0, unpaid: 0 })
   const [filter, setFilter] = useState('all')
   const [search, setSearch] = useState('')
-
-  useEffect(() => {
-    fetchInvoices()
-  }, [])
+  const [offset, setOffset] = useState(0)
+  const [hasMore, setHasMore] = useState(true)
+  const [overdue, setOverdue] = useState([])
+  const [overdueTotal, setOverdueTotal] = useState(0)
 
   useEffect(() => {
     if (location.state?.openId && location.state?.openData) {
@@ -39,58 +44,82 @@ export default function Accounts() {
     }
   }, [location.state])
 
-  async function fetchInvoices() {
-    const { data } = await supabase
-      .from('invoices')
-      .select('*, candidates(full_name)')
-      .order('issued_at', { ascending: false })
+  const fetchInvoices = useCallback(async (newOffset = 0) => {
+    if (newOffset === 0) setLoading(true)
+    else setLoadingMore(true)
+    setError(null)
 
-    const inv = data || []
-    setInvoices(inv)
-    setTotals({
-      paid: inv.filter(i => i.status === 'paid').reduce((s, i) => s + (Number(i.total) || 0), 0),
-      unpaid: inv.filter(i => i.status !== 'paid' && i.status !== 'cancelled').reduce((s, i) => s + (Number(i.total) || 0), 0),
-    })
-    setLoading(false)
+    try {
+      const { data, error: err } = await supabase
+        .from('invoices')
+        .select('*, candidates(full_name)')
+        .order('issued_at', { ascending: false })
+        .range(newOffset, newOffset + PAGE_SIZE - 1)
+
+      if (err) throw err
+      const results = data || []
+
+      if (newOffset === 0) {
+        setInvoices(results)
+      } else {
+        setInvoices(prev => [...prev, ...results])
+      }
+
+      setHasMore(results.length === PAGE_SIZE)
+      setOffset(newOffset)
+
+      if (newOffset === 0) {
+        // Fetch totals separately (full dataset)
+        const { data: allInv } = await supabase
+          .from('invoices')
+          .select('total, status, due_date')
+
+        const inv = allInv || []
+        setTotals({
+          paid: inv.filter(i => i.status === 'paid').reduce((s, i) => s + (Number(i.total) || 0), 0),
+          unpaid: inv.filter(i => i.status !== 'paid' && i.status !== 'cancelled').reduce((s, i) => s + (Number(i.total) || 0), 0),
+        })
+        const od = inv.filter(isOverdue)
+        setOverdue(od)
+        setOverdueTotal(od.reduce((s, i) => s + (Number(i.total) || 0), 0))
+      }
+    } catch {
+      setError('Failed to load invoices. Tap refresh to try again.')
+    } finally {
+      setLoading(false)
+      setLoadingMore(false)
+    }
+  }, [])
+
+  useEffect(() => { fetchInvoices(0) }, [fetchInvoices])
+
+  async function handleRefresh() {
+    setRefreshing(true)
+    await fetchInvoices(0)
+    setRefreshing(false)
   }
 
   function handleUpdated(newStatus, receiptNo) {
     setInvoices(prev => prev.map(inv => inv.id === selected.id ? { ...inv, status: newStatus } : inv))
     setSelected(prev => ({ ...prev, status: newStatus, receipt_no: receiptNo || prev.receipt_no }))
-    fetchInvoices()
+    fetchInvoices(0)
   }
-
-  const overdue = invoices.filter(isOverdue)
-  const overdueTotal = overdue.reduce((s, i) => s + (Number(i.total) || 0), 0)
 
   const filtered = invoices.filter(inv => {
     const q = search.toLowerCase()
     const matchSearch = !search ||
       inv.invoice_no?.toLowerCase().includes(q) ||
       inv.candidates?.full_name?.toLowerCase().includes(q)
-
     let matchFilter
-    if (filter === 'all') {
-      matchFilter = true
-    } else if (filter === 'overdue') {
-      matchFilter = isOverdue(inv)
-    } else {
-      matchFilter = inv.status === filter
-    }
-
+    if (filter === 'all') matchFilter = true
+    else if (filter === 'overdue') matchFilter = isOverdue(inv)
+    else matchFilter = inv.status === filter
     return matchSearch && matchFilter
   })
 
-  function getOverdueLabel() {
-    const count = overdue.length
-    const plural = count > 1 ? 's' : ''
-    return `${count} overdue invoice${plural}`
-  }
-
   function getFilterLabel(key) {
     if (key !== 'overdue') return key === 'all' ? 'All' : key.charAt(0).toUpperCase() + key.slice(1)
-    const count = overdue.length
-    return count ? `Overdue (${count})` : 'Overdue'
+    return overdue.length ? `Overdue (${overdue.length})` : 'Overdue'
   }
 
   function getFilterButtonClass(key) {
@@ -107,37 +136,33 @@ export default function Accounts() {
             <h1 className="text-2xl font-extrabold text-slate-100">Accounts</h1>
             <p className="text-slate-500 text-sm">{invoices.length} invoices</p>
           </div>
-          <button
-            onClick={() => setShowCreate(true)}
-            className="flex items-center gap-2 bg-gradient-to-r from-indigo-500 to-violet-600 text-white px-4 py-2.5 rounded-xl text-sm font-bold shadow-lg"
-          >
-            <Plus size={16} /> Invoice
-          </button>
+          <div className="flex items-center gap-2">
+            <button onClick={handleRefresh} disabled={refreshing}
+              className="p-2 rounded-xl bg-slate-800 text-slate-400 disabled:opacity-50">
+              <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
+            </button>
+            <button onClick={() => setShowCreate(true)}
+              className="flex items-center gap-2 bg-gradient-to-r from-indigo-500 to-violet-600 text-white px-4 py-2.5 rounded-xl text-sm font-bold shadow-lg">
+              <Plus size={16} /> Invoice
+            </button>
+          </div>
         </div>
 
-        {/* Search bar */}
         <div className="relative">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
           <label htmlFor="invoice-search" className="sr-only">Search invoices</label>
-          <input
-            id="invoice-search"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
+          <input id="invoice-search" value={search} onChange={e => setSearch(e.target.value)}
             placeholder="Search by invoice no or candidate..."
-            className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-9 pr-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500"
-          />
+            className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-9 pr-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500" />
         </div>
 
         {overdue.length > 0 && (
-          <button
-            type="button"
-            onClick={() => setFilter('overdue')}
-            className="bg-red-500/10 border border-red-500/30 rounded-2xl px-4 py-3 flex items-center gap-3 w-full text-left"
-          >
+          <button type="button" onClick={() => setFilter('overdue')}
+            className="bg-red-500/10 border border-red-500/30 rounded-2xl px-4 py-3 flex items-center gap-3 w-full text-left">
             <AlertTriangle size={18} className="text-red-400 flex-none" />
             <div className="flex-1">
-              <p className="text-red-400 text-sm font-bold">{getOverdueLabel()}</p>
-              <p className="text-slate-500 text-xs">past due - tap to view • ৳{overdueTotal.toLocaleString()}</p>
+              <p className="text-red-400 text-sm font-bold">{overdue.length} overdue invoice{overdue.length > 1 ? 's' : ''}</p>
+              <p className="text-slate-500 text-xs">past due · ৳{overdueTotal.toLocaleString()}</p>
             </div>
           </button>
         )}
@@ -153,19 +178,21 @@ export default function Accounts() {
           </div>
         </div>
 
-        <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+        <div className="flex gap-2 overflow-x-auto pb-1">
           {['all', 'unpaid', 'partial', 'overdue', 'paid'].map(key => (
-            <button
-              key={key}
-              onClick={() => setFilter(key)}
-              className={`flex-none px-3 py-1.5 rounded-full text-xs font-bold transition-colors ${getFilterButtonClass(key)}`}
-            >
+            <button key={key} onClick={() => setFilter(key)}
+              className={`flex-none px-3 py-1.5 rounded-full text-xs font-bold transition-colors ${getFilterButtonClass(key)}`}>
               {getFilterLabel(key)}
             </button>
           ))}
         </div>
 
-        {loading ? (
+        {error ? (
+          <div className="flex flex-col items-center justify-center py-12 gap-3">
+            <p className="text-red-400 text-sm text-center">{error}</p>
+            <button onClick={handleRefresh} className="bg-indigo-500 text-white font-bold px-5 py-2.5 rounded-xl text-sm">Retry</button>
+          </div>
+        ) : loading ? (
           <div className="flex justify-center py-12">
             <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
           </div>
@@ -178,49 +205,48 @@ export default function Accounts() {
                 {!search && <button onClick={() => setShowCreate(true)} className="mt-4 text-indigo-400 text-sm font-semibold">Create your first invoice</button>}
               </div>
             ) : (
-              <ul>
-                {filtered.map((inv, i) => (
-                  <li
-                    key={inv.id}
-                    className={`flex items-center justify-between px-4 py-4 cursor-pointer active:bg-slate-800 transition-colors ${
-                      i < filtered.length - 1 ? 'border-b border-slate-800' : ''
-                    }`}
-                  >
-                    <button
-                      type="button"
-                      className="contents"
-                      onClick={() => setSelected(inv)}
-                      onKeyDown={e => e.key === 'Enter' && setSelected(inv)}
-                    >
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <p className="text-indigo-400 text-xs font-mono font-semibold">{inv.invoice_no}</p>
-                          {isOverdue(inv) && <AlertTriangle size={11} className="text-red-400" />}
+              <>
+                <ul>
+                  {filtered.map((inv, i) => (
+                    <li key={inv.id}
+                      className={`flex items-center justify-between px-4 py-4 ${i < filtered.length - 1 ? 'border-b border-slate-800' : ''}`}>
+                      <button type="button" className="contents" onClick={() => setSelected(inv)}>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <p className="text-indigo-400 text-xs font-mono font-semibold">{inv.invoice_no}</p>
+                            {isOverdue(inv) && <AlertTriangle size={11} className="text-red-400" />}
+                          </div>
+                          <p className="text-slate-200 text-sm font-semibold mt-0.5">{inv.candidates?.full_name}</p>
+                          <p className="text-slate-500 text-xs">
+                            {new Date(inv.issued_at).toLocaleDateString()}
+                            {inv.due_date && isOverdue(inv) && (
+                              <span className="text-red-400 ml-1.5">· due {new Date(inv.due_date).toLocaleDateString()}</span>
+                            )}
+                          </p>
                         </div>
-                        <p className="text-slate-200 text-sm font-semibold mt-0.5">{inv.candidates?.full_name}</p>
-                        <p className="text-slate-500 text-xs">
-                          {new Date(inv.issued_at).toLocaleDateString()}
-                          {inv.due_date && isOverdue(inv) && (
-                            <span className="text-red-400 ml-1.5">• due {new Date(inv.due_date).toLocaleDateString()}</span>
-                          )}
-                        </p>
-                      </div>
-                      <div className="flex flex-col items-end gap-1.5">
-                        <p className="text-slate-100 text-sm font-bold">৳{(Number(inv.total) || 0).toLocaleString()}</p>
-                        <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${STATUS_COLOR[inv.status] || 'bg-slate-700 text-slate-300'}`}>
-                          {inv.status}
-                        </span>
-                      </div>
-                    </button>
-                  </li>
-                ))}
-              </ul>
+                        <div className="flex flex-col items-end gap-1.5">
+                          <p className="text-slate-100 text-sm font-bold">৳{(Number(inv.total) || 0).toLocaleString()}</p>
+                          <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${STATUS_COLOR[inv.status] || 'bg-slate-700 text-slate-300'}`}>
+                            {inv.status}
+                          </span>
+                        </div>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                {hasMore && (
+                  <button onClick={() => fetchInvoices(offset + PAGE_SIZE)} disabled={loadingMore}
+                    className="w-full py-3 text-indigo-400 text-sm font-bold border-t border-slate-800 hover:bg-slate-800 transition-colors disabled:opacity-50">
+                    {loadingMore ? 'Loading...' : 'Load More'}
+                  </button>
+                )}
+              </>
             )}
           </div>
         )}
       </div>
 
-      {showCreate && <CreateInvoiceModal onClose={() => setShowCreate(false)} onSaved={() => { setShowCreate(false); fetchInvoices(); }} />}
+      {showCreate && <CreateInvoiceModal onClose={() => setShowCreate(false)} onSaved={() => { setShowCreate(false); fetchInvoices(0) }} />}
       {selected && <InvoiceDetail invoice={selected} onClose={() => setSelected(null)} onUpdated={handleUpdated} />}
     </>
   )

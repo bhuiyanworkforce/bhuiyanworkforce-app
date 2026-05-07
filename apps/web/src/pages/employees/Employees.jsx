@@ -1,7 +1,6 @@
-import PropTypes from 'prop-types'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../../lib/supabase'
-import { Plus, X, Users, ChevronRight, ToggleLeft, ToggleRight } from 'lucide-react'
+import { Plus, X, Users, ChevronRight, ToggleLeft, ToggleRight, RefreshCw, AlertCircle } from 'lucide-react'
 
 const ROLES = ['manager', 'accountant', 'visa_officer', 'passport_officer', 'receptionist', 'driver', 'peon', 'other']
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
@@ -34,7 +33,12 @@ function AddEmployeeModal({ onClose, onSaved }) {
           <button type="button" onClick={onClose}><X size={20} className="text-slate-400"/></button>
         </div>
         <div className="p-5 pb-24 flex flex-col gap-4">
-          {error && <p className="text-red-400 text-sm bg-red-500/10 px-4 py-2 rounded-xl">{error}</p>}
+          {error && (
+            <div className="flex items-center gap-2 text-red-400 text-sm bg-red-500/10 px-4 py-2 rounded-xl">
+              <AlertCircle size={15} className="flex-none" />
+              {error}
+            </div>
+          )}
           <label className="flex flex-col gap-1">
             <span className="text-xs text-slate-500 font-semibold">Full Name *</span>
             <input value={form.name} onChange={e => set('name', e.target.value)} placeholder="Employee name"
@@ -67,11 +71,6 @@ function AddEmployeeModal({ onClose, onSaved }) {
   )
 }
 
-AddEmployeeModal.propTypes = {
-  onClose: PropTypes.func.isRequired,
-  onSaved: PropTypes.func.isRequired,
-}
-
 function EmployeeDetail({ employee: initial, onClose, onUpdated }) {
   const [employee, setEmployee] = useState(initial)
   const [payrolls, setPayrolls] = useState([])
@@ -80,6 +79,8 @@ function EmployeeDetail({ employee: initial, onClose, onUpdated }) {
   const [editing, setEditing] = useState(false)
   const [editForm, setEditForm] = useState({ name: initial.name, role: initial.role, phone: initial.phone || '', basic_salary: String(initial.basic_salary || '') })
   const [saving, setSaving] = useState(false)
+  const [editError, setEditError] = useState('')
+  const [toggleError, setToggleError] = useState('')
 
   useEffect(() => {
     supabase.from('employee_payroll').select('*').eq('employee_id', employee.id)
@@ -89,24 +90,26 @@ function EmployeeDetail({ employee: initial, onClose, onUpdated }) {
 
   async function toggleStatus() {
     setToggling(true)
+    setToggleError('')
     const newStatus = employee.status === 'active' ? 'inactive' : 'active'
     const { error } = await supabase.from('employees').update({ status: newStatus }).eq('id', employee.id)
-    if (error) { alert(error.message); setToggling(false); return }
+    if (error) { setToggleError(error.message); setToggling(false); return }
     setEmployee(prev => ({ ...prev, status: newStatus }))
     onUpdated()
     setToggling(false)
   }
 
   async function saveEdit() {
-    if (!editForm.name.trim() || !editForm.basic_salary) return
+    if (!editForm.name.trim() || !editForm.basic_salary) { setEditError('Name and salary are required'); return }
     setSaving(true)
+    setEditError('')
     const { error } = await supabase.from('employees').update({
       name: editForm.name.trim(),
       role: editForm.role,
       phone: editForm.phone || null,
       basic_salary: Number.parseFloat(editForm.basic_salary),
     }).eq('id', employee.id)
-    if (error) { alert(error.message); setSaving(false); return }
+    if (error) { setEditError(error.message); setSaving(false); return }
     setEmployee(prev => ({ ...prev, ...editForm, basic_salary: Number.parseFloat(editForm.basic_salary) }))
     setEditing(false)
     setSaving(false)
@@ -124,11 +127,16 @@ function EmployeeDetail({ employee: initial, onClose, onUpdated }) {
           <p className="text-slate-100 font-bold text-sm">{employee.name}</p>
           <p className="text-slate-500 text-xs capitalize">{employee.role?.replace('_', ' ')} {employee.phone ? '· ' + employee.phone : ''}</p>
         </div>
-        <button type="button" onClick={() => setEditing(true)} className="text-xs text-indigo-400 font-bold px-3 py-1.5 bg-indigo-500/10 rounded-xl">Edit</button>
+        <button type="button" onClick={() => { setEditing(true); setEditError('') }} className="text-xs text-indigo-400 font-bold px-3 py-1.5 bg-indigo-500/10 rounded-xl">Edit</button>
       </div>
 
       <div className="p-4 flex flex-col gap-4">
-        {/* Status + salary */}
+        {toggleError && (
+          <div className="flex items-center gap-2 text-red-400 text-sm bg-red-500/10 px-4 py-3 rounded-xl">
+            <AlertCircle size={15} className="flex-none" /> {toggleError}
+          </div>
+        )}
+
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
           <div className="flex items-center justify-between mb-4">
             <div>
@@ -139,14 +147,14 @@ function EmployeeDetail({ employee: initial, onClose, onUpdated }) {
               type="button"
               onClick={toggleStatus}
               disabled={toggling}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-colors ${
-                employee.status === 'active'
-                  ? 'bg-emerald-500/15 text-emerald-400'
-                  : 'bg-slate-700 text-slate-400'
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-colors disabled:opacity-50 ${
+                employee.status === 'active' ? 'bg-emerald-500/15 text-emerald-400' : 'bg-slate-700 text-slate-400'
               }`}>
-              {employee.status === 'active'
-                ? <><ToggleRight size={18}/> Active</>
-                : <><ToggleLeft size={18}/> Inactive</>
+              {toggling
+                ? <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                : employee.status === 'active'
+                  ? <><ToggleRight size={18}/> Active</>
+                  : <><ToggleLeft size={18}/> Inactive</>
               }
             </button>
           </div>
@@ -166,7 +174,6 @@ function EmployeeDetail({ employee: initial, onClose, onUpdated }) {
           </div>
         </div>
 
-        {/* Payroll history */}
         <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
           <div className="px-4 py-3 border-b border-slate-800">
             <p className="text-sm font-bold text-slate-200">Payroll History</p>
@@ -196,11 +203,15 @@ function EmployeeDetail({ employee: initial, onClose, onUpdated }) {
         </div>
       </div>
 
-      {/* Edit modal */}
       {editing && (
         <div className="fixed inset-0 bg-black/70 flex items-end z-50">
           <div className="bg-[#0d1526] rounded-t-2xl w-full p-5 max-h-[80vh] overflow-y-auto pb-24">
             <h2 className="text-lg font-bold text-slate-100 mb-4">Edit Employee</h2>
+            {editError && (
+              <div className="flex items-center gap-2 text-red-400 text-sm bg-red-500/10 px-4 py-2 rounded-xl mb-4">
+                <AlertCircle size={15} className="flex-none" /> {editError}
+              </div>
+            )}
             <div className="flex flex-col gap-4">
               <label className="flex flex-col gap-1">
                 <span className="text-xs text-slate-500 font-semibold">Full Name *</span>
@@ -238,33 +249,29 @@ function EmployeeDetail({ employee: initial, onClose, onUpdated }) {
   )
 }
 
-EmployeeDetail.propTypes = {
-  employee: PropTypes.shape({
-    id: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired,
-    name: PropTypes.string.isRequired,
-    role: PropTypes.string,
-    phone: PropTypes.string,
-    basic_salary: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
-    status: PropTypes.string,
-  }).isRequired,
-  onClose: PropTypes.func.isRequired,
-  onUpdated: PropTypes.func.isRequired,
-}
-
 export default function Employees() {
   const [employees, setEmployees] = useState([])
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+  const [error, setError] = useState(null)
   const [filter, setFilter] = useState('active')
   const [showAdd, setShowAdd] = useState(false)
   const [selected, setSelected] = useState(null)
 
-  useEffect(() => { fetchEmployees() }, [])
-
-  async function fetchEmployees() {
-    const { data, error } = await supabase.from('employees').select('*').order('name')
-    if (error) alert(error.message)
+  const fetchEmployees = useCallback(async () => {
+    setError(null)
+    const { data, error: err } = await supabase.from('employees').select('*').order('name')
+    if (err) { setError('Failed to load employees. Tap refresh to try again.'); setLoading(false); return }
     setEmployees(data || [])
     setLoading(false)
+  }, [])
+
+  useEffect(() => { fetchEmployees() }, [fetchEmployees])
+
+  async function handleRefresh() {
+    setRefreshing(true)
+    await fetchEmployees()
+    setRefreshing(false)
   }
 
   const filtered = filter === 'all' ? employees : employees.filter(e => e.status === filter)
@@ -278,15 +285,18 @@ export default function Employees() {
           <h1 className="text-2xl font-extrabold text-slate-100">Employees</h1>
           <p className="text-slate-500 text-sm">{activeCount} active · {employees.length} total</p>
         </div>
-        <button
-          type="button"
-          onClick={() => setShowAdd(true)}
-          className="flex items-center gap-2 bg-gradient-to-r from-indigo-500 to-violet-600 text-white px-4 py-2.5 rounded-xl text-sm font-bold shadow-lg">
-          <Plus size={16}/> Add
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={handleRefresh} disabled={refreshing}
+            className="p-2 rounded-xl bg-slate-800 text-slate-400 disabled:opacity-50">
+            <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
+          </button>
+          <button type="button" onClick={() => setShowAdd(true)}
+            className="flex items-center gap-2 bg-gradient-to-r from-indigo-500 to-violet-600 text-white px-4 py-2.5 rounded-xl text-sm font-bold shadow-lg">
+            <Plus size={16}/> Add
+          </button>
+        </div>
       </div>
 
-      {/* Summary */}
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex items-center gap-4">
         <div className="w-10 h-10 rounded-xl bg-indigo-500/15 flex items-center justify-center flex-none">
           <Users size={18} className="text-indigo-400"/>
@@ -297,7 +307,6 @@ export default function Employees() {
         </div>
       </div>
 
-      {/* Filter tabs */}
       <div className="flex gap-2">
         {['active', 'inactive', 'all'].map(f => (
           <button key={f} type="button" onClick={() => setFilter(f)}
@@ -307,27 +316,30 @@ export default function Employees() {
         ))}
       </div>
 
-      {loading ? (
+      {error ? (
+        <div className="flex flex-col items-center justify-center py-12 gap-3">
+          <p className="text-red-400 text-sm text-center">{error}</p>
+          <button onClick={handleRefresh} className="bg-indigo-500 text-white font-bold px-5 py-2.5 rounded-xl text-sm">Retry</button>
+        </div>
+      ) : loading ? (
         <div className="flex justify-center py-12"><div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"/></div>
       ) : (
         <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
           {filtered.length === 0 ? (
             <div className="flex flex-col items-center py-12 text-slate-600">
               <Users size={32} className="mb-3"/>
-              <p className="text-sm">No employees found</p>
-              <button type="button" onClick={() => setShowAdd(true)} className="mt-4 text-indigo-400 text-sm font-semibold">Add first employee →</button>
+              <p className="text-sm">No {filter !== 'all' ? filter : ''} employees found</p>
+              {filter === 'active' && <button type="button" onClick={() => setShowAdd(true)} className="mt-4 text-indigo-400 text-sm font-semibold">Add first employee →</button>}
             </div>
           ) : (
             <ul>
               {filtered.map((emp, i) => (
                 <li key={emp.id}
-                  className={`flex items-center gap-3 px-4 py-4 cursor-pointer active:bg-slate-800 transition-colors ${i < filtered.length - 1 ? 'border-b border-slate-800' : ''}`}>
+                  className={`flex items-center gap-3 px-4 py-4 transition-colors ${i < filtered.length - 1 ? 'border-b border-slate-800' : ''}`}>
                   <button
                     type="button"
                     className="flex items-center gap-3 flex-1 min-w-0 text-left"
-                    onClick={() => setSelected(emp)}
-                    onKeyDown={e => e.key === 'Enter' && setSelected(emp)}
-                  >
+                    onClick={() => setSelected(emp)}>
                     <div className="w-10 h-10 rounded-xl bg-indigo-500/15 flex items-center justify-center text-indigo-400 font-bold text-base flex-none">
                       {emp.name?.[0]?.toUpperCase()}
                     </div>
