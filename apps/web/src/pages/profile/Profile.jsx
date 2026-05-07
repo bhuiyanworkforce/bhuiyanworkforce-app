@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
-import { User, Phone, Mail, Lock, Save, CheckCircle, AlertCircle, Building, RefreshCw } from 'lucide-react'
+import { User, Phone, Mail, Lock, Save, CheckCircle, AlertCircle, Building, RefreshCw, Camera } from 'lucide-react'
 
 export default function Profile() {
   const { user } = useAuth()
@@ -14,6 +14,9 @@ export default function Profile() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [refreshing, setRefreshing] = useState(false)
+  const [avatarUrl, setAvatarUrl] = useState(null)
+  const [uploadingAvatar, setUploadingAvatar] = useState(false)
+  const fileInputRef = useRef(null)
 
   const fetchProfile = useCallback(async () => {
     if (!user) return
@@ -34,6 +37,7 @@ export default function Profile() {
       } else {
         setProfile(data)
         setForm({ full_name: data.full_name || '', phone: data.phone || '' })
+        setAvatarUrl(data.avatar_url || null)
       }
     } catch {
       setError('Failed to load profile. Tap refresh to try again.')
@@ -56,20 +60,40 @@ export default function Profile() {
     setTimeout(() => setToast(null), 3000)
   }
 
-  async function handleAvatarUpload(e) {
-    const file = e.target.files[0]
+  async function handleAvatarChange(e) {
+    const file = e.target.files?.[0]
     if (!file) return
+    if (file.size > 2 * 1024 * 1024) { showToast('Image must be under 2MB', 'error'); return }
+
     setUploadingAvatar(true)
-    const ext = file.name.split('.').pop()
-    const path = `avatars/${user.id}.${ext}`
-    const { error: uploadError } = await supabase.storage.from('avatars').upload(path, file, { upsert: true })
-    if (uploadError) { showToast(uploadError.message, 'error'); setUploadingAvatar(false); return }
-    const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(path)
-    const { error: updateError } = await supabase.from('profiles')
-  .update({ avatar_url: publicUrl }).eq('id', user.id)
-    if (updateError) showToast(updateError.message, 'error')
-    else { setAvatarUrl(publicUrl); showToast('Avatar updated!') }
-    setUploadingAvatar(false)
+    try {
+      const ext = file.name.split('.').pop()
+      const path = `avatars/${user.id}/avatar.${ext}`
+
+      const { error: uploadErr } = await supabase.storage
+        .from('avatars')
+        .upload(path, file, { upsert: true })
+
+      if (uploadErr) throw uploadErr
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(path)
+
+      const urlWithBust = `${publicUrl}?t=${Date.now()}`
+
+      const { error: updateErr } = await supabase.from('profiles')
+        .update({ avatar_url: urlWithBust }).eq('id', user.id)
+
+      if (updateErr) throw updateErr
+
+      setAvatarUrl(urlWithBust)
+      showToast('Photo updated!')
+    } catch (err) {
+      showToast(err.message || 'Upload failed', 'error')
+    } finally {
+      setUploadingAvatar(false)
+    }
   }
 
   async function handleSaveProfile() {
@@ -153,9 +177,39 @@ export default function Profile() {
       ) : (
         <>
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 flex items-center gap-4">
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white font-extrabold text-2xl flex-none shadow-lg shadow-indigo-500/25">
-              {form.full_name?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || 'U'}
+            <div className="relative flex-none">
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploadingAvatar}
+                className="relative w-16 h-16 rounded-2xl overflow-hidden flex-none shadow-lg shadow-indigo-500/25 focus:outline-none"
+              >
+                {avatarUrl ? (
+                  <img src={avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-full h-full bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white font-extrabold text-2xl">
+                    {form.full_name?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || 'U'}
+                  </div>
+                )}
+                <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 hover:opacity-100 active:opacity-100 transition-opacity">
+                  {uploadingAvatar
+                    ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    : <Camera size={18} className="text-white" />
+                  }
+                </div>
+              </button>
+              <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-indigo-500 rounded-full flex items-center justify-center pointer-events-none">
+                <Camera size={10} className="text-white" />
+              </div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleAvatarChange}
+              />
             </div>
+
             <div>
               <p className="text-slate-100 font-bold text-lg">{form.full_name || 'No name set'}</p>
               <p className="text-slate-500 text-sm">{user?.email}</p>
@@ -259,10 +313,14 @@ export default function Profile() {
 
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
         <h2 className="text-sm font-bold text-slate-300 mb-4">App Information</h2>
+        {/* App logo and name */}
+        <div className="flex flex-col items-center gap-2 mb-5 py-4 border-b border-slate-800">
+          <img src="/icon-192.png" alt="Bhuiyan Books" className="w-16 h-16 rounded-2xl shadow-lg" />
+          <p className="text-slate-100 font-extrabold text-lg">Bhuiyan Books</p>
+          <p className="text-slate-500 text-xs">Bhuiyan Workforce Ltd.</p>
+        </div>
         <div className="flex flex-col gap-3">
           {[
-            { label: 'App Name', value: 'AgencyOS' },
-            { label: 'Company', value: 'Bhuiyan Workforce Management' },
             { label: 'Version', value: '1.0.0' },
             { label: 'Domain', value: 'app.bhuiyanworkforce.com' },
             { label: 'Database', value: 'Supabase (Singapore)' },
