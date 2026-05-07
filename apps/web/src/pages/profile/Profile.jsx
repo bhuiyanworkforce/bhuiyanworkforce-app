@@ -72,8 +72,6 @@ export default function Profile() {
     setUploadingAvatar(false)
   }
 
-=======
->>>>>>> 69f0d5b (Improve: pagination, error states, refresh buttons, profit tab fix, full backup)
   async function handleSaveProfile() {
     if (!form.full_name) { showToast('Name is required', 'error'); return }
     if (!user) return
