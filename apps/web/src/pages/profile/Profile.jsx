@@ -56,7 +56,6 @@ export default function Profile() {
     setTimeout(() => setToast(null), 3000)
   }
 
-<<<<<<< HEAD
   async function handleAvatarUpload(e) {
     const file = e.target.files[0]
     if (!file) return
