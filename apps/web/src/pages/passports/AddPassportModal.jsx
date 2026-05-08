@@ -5,12 +5,14 @@ import { Scan } from 'lucide-react'
 import Modal from '../../components/Modal'
 import OCRScanner from './OCRScanner'
 
+const EMPTY_FORM = {
+  candidate_id: '', passport_no: '', issue_date: '',
+  expiry_date: '', place_of_issue: '', current_location: 'Office',
+}
+
 export default function AddPassportModal({ open, onClose, onSaved }) {
   const [candidates, setCandidates] = useState([])
-  const [form, setForm] = useState({
-    candidate_id: '', passport_no: '', issue_date: '',
-    expiry_date: '', place_of_issue: '', current_location: 'Office',
-  })
+  const [form, setForm] = useState(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [showScanner, setShowScanner] = useState(false)
@@ -18,6 +20,9 @@ export default function AddPassportModal({ open, onClose, onSaved }) {
 
   useEffect(() => {
     if (open) {
+      // Clear error and reset form every time the modal opens
+      setError('')
+      setForm(EMPTY_FORM)
       supabase.from('candidates').select('id, full_name').order('full_name')
         .then(({ data }) => setCandidates(data || []))
     }
@@ -48,7 +53,6 @@ export default function AddPassportModal({ open, onClose, onSaved }) {
       created_by: user.id,
     })
     if (err) { setError(err.message); setSaving(false); return }
-    setForm({ candidate_id: '', passport_no: '', issue_date: '', expiry_date: '', place_of_issue: '', current_location: 'Office' })
     onSaved()
   }
 
@@ -59,13 +63,11 @@ export default function AddPassportModal({ open, onClose, onSaved }) {
           <div className="bg-red-500/10 border border-red-500/30 text-red-400 text-xs rounded-xl px-4 py-3">{error}</div>
         )}
 
-        {/* OCR Scan Button */}
         <button onClick={() => setShowScanner(true)}
           className="flex items-center justify-center gap-2 w-full bg-indigo-500/15 border border-indigo-500/30 text-indigo-400 font-bold py-3 rounded-xl text-sm">
           <Scan size={16}/> Scan Passport (Auto-fill)
         </button>
 
-        {/* L71 – form label must be associated with a control */}
         <div>
           <label htmlFor="candidate_id" className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-1.5">Candidate *</label>
           <select id="candidate_id" value={form.candidate_id} onChange={e => set('candidate_id', e.target.value)}
@@ -75,7 +77,6 @@ export default function AddPassportModal({ open, onClose, onSaved }) {
           </select>
         </div>
 
-        {/* L80 – form label must be associated with a control */}
         <div>
           <label htmlFor="passport_no" className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-1.5">Passport Number *</label>
           <input id="passport_no" value={form.passport_no} onChange={e => set('passport_no', e.target.value.toUpperCase())}
@@ -84,13 +85,11 @@ export default function AddPassportModal({ open, onClose, onSaved }) {
         </div>
 
         <div className="grid grid-cols-2 gap-3">
-          {/* L88 – form label must be associated with a control */}
           <div>
             <label htmlFor="issue_date" className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-1.5">Issue Date</label>
             <input id="issue_date" type="date" value={form.issue_date} onChange={e => set('issue_date', e.target.value)}
               className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm text-slate-100 focus:outline-none focus:border-indigo-500"/>
           </div>
-          {/* L93 – form label must be associated with a control */}
           <div>
             <label htmlFor="expiry_date" className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-1.5">Expiry Date</label>
             <input id="expiry_date" type="date" value={form.expiry_date} onChange={e => set('expiry_date', e.target.value)}
@@ -98,7 +97,6 @@ export default function AddPassportModal({ open, onClose, onSaved }) {
           </div>
         </div>
 
-        {/* L100 – form label must be associated with a control */}
         <div>
           <label htmlFor="place_of_issue" className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-1.5">Place of Issue</label>
           <input id="place_of_issue" value={form.place_of_issue} onChange={e => set('place_of_issue', e.target.value)}
@@ -106,7 +104,6 @@ export default function AddPassportModal({ open, onClose, onSaved }) {
             className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500"/>
         </div>
 
-        {/* L107 – form label must be associated with a control */}
         <div>
           <label htmlFor="current_location" className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-1.5">Current Location</label>
           <select id="current_location" value={form.current_location} onChange={e => set('current_location', e.target.value)}
@@ -133,7 +130,6 @@ export default function AddPassportModal({ open, onClose, onSaved }) {
   )
 }
 
-// L7 – 'open', 'onClose', 'onSaved' missing in props validation
 AddPassportModal.propTypes = {
   open: PropTypes.bool.isRequired,
   onClose: PropTypes.func.isRequired,
