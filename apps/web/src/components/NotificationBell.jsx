@@ -9,7 +9,6 @@ const TYPE_STYLES = {
   error:   { bg: 'bg-red-500/15',    text: 'text-red-400',     dot: 'bg-red-400'     },
 }
 
-// FIX L102: Moved timeAgo to outer scope (was inside component)
 function timeAgo(dateStr) {
   const diff = Date.now() - new Date(dateStr).getTime()
   const mins = Math.floor(diff / 60000)
@@ -20,7 +19,6 @@ function timeAgo(dateStr) {
   return `${Math.floor(hrs / 24)}d ago`
 }
 
-// FIX L38: Extracted channel subscription logic to outer scope to reduce nesting depth
 function subscribeToNotifications(userId, onInsert) {
   return supabase
     .channel(`notifications:${userId}`)
@@ -40,11 +38,11 @@ export default function NotificationBell() {
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [userId, setUserId] = useState(null)
+  const [confirmClear, setConfirmClear] = useState(false)
   const panelRef = useRef(null)
 
   const unreadCount = notifications.filter(n => n.is_read === false).length
 
-  // FIX L38: init() body is now shallow — channel setup extracted above
   useEffect(() => {
     let channel
 
@@ -54,6 +52,7 @@ export default function NotificationBell() {
       setUserId(user.id)
       await fetchNotificationsForUser(user.id)
 
+      // Realtime channel handles new inserts — no polling interval needed
       channel = subscribeToNotifications(user.id, (newNotification) => {
         setNotifications(prev => [newNotification, ...prev])
       })
@@ -61,15 +60,8 @@ export default function NotificationBell() {
 
     init()
 
-    const interval = setInterval(() => {
-      supabase.auth.getUser().then(({ data: { user } }) => {
-        if (user) fetchNotificationsForUser(user.id)
-      })
-    }, 30000)
-
     return () => {
       if (channel) supabase.removeChannel(channel)
-      clearInterval(interval)
     }
   }, [])
 
@@ -77,6 +69,7 @@ export default function NotificationBell() {
     function handleClick(e) {
       if (panelRef.current && !panelRef.current.contains(e.target)) {
         setOpen(false)
+        setConfirmClear(false)
       }
     }
     document.addEventListener('mousedown', handleClick)
@@ -116,9 +109,9 @@ export default function NotificationBell() {
     if (!userId) return
     await supabase.from('notifications').delete().eq('user_id', userId)
     setNotifications([])
+    setConfirmClear(false)
   }
 
-  // FIX L117: Removed nested template literal — extracted aria-label to a variable
   const bellAriaLabel = unreadCount > 0
     ? `Notifications (${unreadCount} unread)`
     : 'Notifications'
@@ -167,7 +160,6 @@ export default function NotificationBell() {
               <ul>
                 {notifications.map((n) => {
                   const style = TYPE_STYLES[n.type] || TYPE_STYLES.info
-                  // FIX L157, L159, L164: Flip negated conditions to positive form
                   const isUnread = n.is_read === false
                   return (
                     <li
@@ -179,7 +171,6 @@ export default function NotificationBell() {
                           ? <div className={`w-2 h-2 rounded-full ${style.dot}`} />
                           : <div className="w-2 h-2 rounded-full bg-slate-700" />}
                       </div>
-                      {/* FIX L163: Replaced <div onClick> with <button> for native interactivity + keyboard support */}
                       <button
                         type="button"
                         className={`flex-1 min-w-0 text-left bg-transparent border-0 p-0 cursor-pointer ${isUnread ? '' : 'cursor-default'}`}
@@ -210,10 +201,29 @@ export default function NotificationBell() {
 
           {notifications.length > 0 && (
             <div className="px-4 py-3 border-t border-slate-800 flex-none">
-              <button onClick={clearAllNotifications}
-                className="text-xs text-slate-600 hover:text-red-400 font-semibold transition-colors w-full text-center">
-                Clear all notifications
-              </button>
+              {confirmClear ? (
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs text-slate-400">Clear all notifications?</p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setConfirmClear(false)}
+                      className="text-xs text-slate-500 hover:text-slate-300 font-semibold transition-colors px-2 py-1">
+                      Cancel
+                    </button>
+                    <button
+                      onClick={clearAllNotifications}
+                      className="text-xs text-red-400 hover:text-red-300 font-bold transition-colors px-2 py-1">
+                      Clear all
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setConfirmClear(true)}
+                  className="text-xs text-slate-600 hover:text-red-400 font-semibold transition-colors w-full text-center">
+                  Clear all notifications
+                </button>
+              )}
             </div>
           )}
         </div>
