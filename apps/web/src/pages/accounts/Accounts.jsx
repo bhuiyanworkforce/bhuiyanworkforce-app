@@ -20,6 +20,20 @@ function isOverdue(inv) {
   return new Date(inv.due_date) < new Date()
 }
 
+// ─── BUG 4 FIX ───────────────────────────────────────────────────────────────
+// The original code fetched only 20 invoices (PAGE_SIZE) server-side and then
+// ran `.filter()` on that local array for both search and status filtering.
+// This meant: if the user searched for an invoice on page 3, it would silently
+// return no results — even though the record exists in the database.
+//
+// Fix: push search and status filter into the Supabase query itself, so the
+// server filters across all rows. Pagination (Load More) still works because
+// it re-runs the same server-filtered query with an increased offset.
+//
+// The totals and overdue banner always query the FULL dataset (no filters)
+// so they reflect the true financial position regardless of the active search.
+// ─────────────────────────────────────────────────────────────────────────────
+
 export default function Accounts() {
   const location = useLocation()
   const [invoices, setInvoices] = useState([])
@@ -44,19 +58,47 @@ export default function Accounts() {
     }
   }, [location.state])
 
-  const fetchInvoices = useCallback(async (newOffset = 0) => {
+  // Build the Supabase query with server-side search + filter applied
+  function buildQuery(currentSearch, currentFilter, newOffset) {
+    let query = supabase
+      .from('invoices')
+      .select('*, candidates(full_name)')
+      .order('issued_at', { ascending: false })
+      .range(newOffset, newOffset + PAGE_SIZE - 1)
+
+    // Server-side full-text search across invoice_no and candidate name
+    if (currentSearch.trim()) {
+      // Supabase supports ilike on joined columns via the foreign table syntax.
+      // We use an `or` filter across both fields.
+      query = query.or(
+        `invoice_no.ilike.%${currentSearch.trim()}%,candidates.full_name.ilike.%${currentSearch.trim()}%`
+      )
+    }
+
+    // Server-side status filter
+    // 'overdue' is a client-side concept (due_date < now && status != paid/cancelled),
+    // so we handle it via a date + status filter on the server.
+    if (currentFilter === 'overdue') {
+      const today = new Date().toISOString().split('T')[0]
+      query = query
+        .lt('due_date', today)
+        .not('status', 'in', '("paid","cancelled")')
+    } else if (currentFilter !== 'all') {
+      query = query.eq('status', currentFilter)
+    }
+
+    return query
+  }
+
+  const fetchInvoices = useCallback(async (newOffset = 0, currentSearch = search, currentFilter = filter) => {
     if (newOffset === 0) setLoading(true)
     else setLoadingMore(true)
     setError(null)
 
     try {
-      const { data, error: err } = await supabase
-        .from('invoices')
-        .select('*, candidates(full_name)')
-        .order('issued_at', { ascending: false })
-        .range(newOffset, newOffset + PAGE_SIZE - 1)
-
+      const { data, error: err } = await buildQuery(currentSearch, currentFilter, newOffset)
       if (err) throw err
+
       const results = data || []
 
       if (newOffset === 0) {
@@ -68,8 +110,9 @@ export default function Accounts() {
       setHasMore(results.length === PAGE_SIZE)
       setOffset(newOffset)
 
+      // Totals always reflect the FULL dataset (unfiltered) so the financial
+      // summary at the top is always accurate regardless of active filters.
       if (newOffset === 0) {
-        // Fetch totals separately (full dataset)
         const { data: allInv } = await supabase
           .from('invoices')
           .select('total, status, due_date')
@@ -89,33 +132,29 @@ export default function Accounts() {
       setLoading(false)
       setLoadingMore(false)
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  useEffect(() => { fetchInvoices(0) }, [fetchInvoices])
+  // Re-fetch from page 0 whenever search or filter changes
+  useEffect(() => {
+    fetchInvoices(0, search, filter)
+  // fetchInvoices is stable (no deps), so this only re-runs on search/filter changes
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search, filter])
 
   async function handleRefresh() {
     setRefreshing(true)
-    await fetchInvoices(0)
+    await fetchInvoices(0, search, filter)
     setRefreshing(false)
   }
 
   function handleUpdated(newStatus, receiptNo) {
-    setInvoices(prev => prev.map(inv => inv.id === selected.id ? { ...inv, status: newStatus } : inv))
+    setInvoices(prev => prev.map(inv =>
+      inv.id === selected.id ? { ...inv, status: newStatus } : inv
+    ))
     setSelected(prev => ({ ...prev, status: newStatus, receipt_no: receiptNo || prev.receipt_no }))
-    fetchInvoices(0)
+    fetchInvoices(0, search, filter)
   }
-
-  const filtered = invoices.filter(inv => {
-    const q = search.toLowerCase()
-    const matchSearch = !search ||
-      inv.invoice_no?.toLowerCase().includes(q) ||
-      inv.candidates?.full_name?.toLowerCase().includes(q)
-    let matchFilter
-    if (filter === 'all') matchFilter = true
-    else if (filter === 'overdue') matchFilter = isOverdue(inv)
-    else matchFilter = inv.status === filter
-    return matchSearch && matchFilter
-  })
 
   function getFilterLabel(key) {
     if (key !== 'overdue') return key === 'all' ? 'All' : key.charAt(0).toUpperCase() + key.slice(1)
@@ -134,7 +173,7 @@ export default function Accounts() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-extrabold text-slate-100">Accounts</h1>
-            <p className="text-slate-500 text-sm">{invoices.length} invoices</p>
+            <p className="text-slate-500 text-sm">{invoices.length}{hasMore ? '+' : ''} invoices</p>
           </div>
           <div className="flex items-center gap-2">
             <button onClick={handleRefresh} disabled={refreshing}
@@ -151,9 +190,13 @@ export default function Accounts() {
         <div className="relative">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
           <label htmlFor="invoice-search" className="sr-only">Search invoices</label>
-          <input id="invoice-search" value={search} onChange={e => setSearch(e.target.value)}
+          <input
+            id="invoice-search"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
             placeholder="Search by invoice no or candidate..."
-            className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-9 pr-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500" />
+            className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-9 pr-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+          />
         </div>
 
         {overdue.length > 0 && (
@@ -198,18 +241,22 @@ export default function Accounts() {
           </div>
         ) : (
           <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
-            {filtered.length === 0 ? (
+            {invoices.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-slate-600">
                 <Receipt size={32} className="mb-3" />
                 <p className="text-sm">{search ? 'No invoices match your search' : 'No invoices found'}</p>
-                {!search && <button onClick={() => setShowCreate(true)} className="mt-4 text-indigo-400 text-sm font-semibold">Create your first invoice</button>}
+                {!search && (
+                  <button onClick={() => setShowCreate(true)} className="mt-4 text-indigo-400 text-sm font-semibold">
+                    Create your first invoice
+                  </button>
+                )}
               </div>
             ) : (
               <>
                 <ul>
-                  {filtered.map((inv, i) => (
+                  {invoices.map((inv, i) => (
                     <li key={inv.id}
-                      className={`flex items-center justify-between px-4 py-4 ${i < filtered.length - 1 ? 'border-b border-slate-800' : ''}`}>
+                      className={`flex items-center justify-between px-4 py-4 ${i < invoices.length - 1 ? 'border-b border-slate-800' : ''}`}>
                       <button type="button" className="contents" onClick={() => setSelected(inv)}>
                         <div>
                           <div className="flex items-center gap-2">
@@ -235,7 +282,9 @@ export default function Accounts() {
                   ))}
                 </ul>
                 {hasMore && (
-                  <button onClick={() => fetchInvoices(offset + PAGE_SIZE)} disabled={loadingMore}
+                  <button
+                    onClick={() => fetchInvoices(offset + PAGE_SIZE, search, filter)}
+                    disabled={loadingMore}
                     className="w-full py-3 text-indigo-400 text-sm font-bold border-t border-slate-800 hover:bg-slate-800 transition-colors disabled:opacity-50">
                     {loadingMore ? 'Loading...' : 'Load More'}
                   </button>
@@ -246,7 +295,7 @@ export default function Accounts() {
         )}
       </div>
 
-      {showCreate && <CreateInvoiceModal onClose={() => setShowCreate(false)} onSaved={() => { setShowCreate(false); fetchInvoices(0) }} />}
+      {showCreate && <CreateInvoiceModal onClose={() => setShowCreate(false)} onSaved={() => { setShowCreate(false); fetchInvoices(0, search, filter) }} />}
       {selected && <InvoiceDetail invoice={selected} onClose={() => setSelected(null)} onUpdated={handleUpdated} />}
     </>
   )
