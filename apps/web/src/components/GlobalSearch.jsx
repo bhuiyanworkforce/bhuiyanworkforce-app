@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
-import { Search, X, User, Stamp, FileText, Wallet, ChevronRight } from 'lucide-react'
+import { Search, X, User, Stamp, FileText, Wallet, ChevronRight, AlertTriangle } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
 const RESULT_TYPES = {
@@ -15,6 +15,7 @@ export default function GlobalSearch() {
   const [query, setQuery] = useState('')
   const [results, setResults] = useState([])
   const [loading, setLoading] = useState(false)
+  const [searchError, setSearchError] = useState(null)
   const inputRef = useRef(null)
   const navigate = useNavigate()
 
@@ -23,72 +24,84 @@ export default function GlobalSearch() {
   }, [open])
 
   useEffect(() => {
-    if (!query.trim()) { setResults([]); return }
+    if (!query.trim()) { setResults([]); setSearchError(null); return }
     const timeout = setTimeout(() => search(query), 300)
     return () => clearTimeout(timeout)
   }, [query])
 
   async function search(q) {
     setLoading(true)
+    setSearchError(null)
     const term = `%${q}%`
 
-    const [
-      { data: candidates },
-      { data: passports },
-      { data: visas },
-      { data: invoices },
-    ] = await Promise.all([
-      supabase.from('candidates')
-        .select('id, full_name, phone, nationality')
-        .or(`full_name.ilike.${term},phone.ilike.${term}`)
-        .limit(4),
-      supabase.from('passports')
-        .select('id, passport_no, status, candidates(full_name)')
-        .or(`passport_no.ilike.${term}`)
-        .limit(4),
-      supabase.from('visa_applications')
-        .select('id, visa_type, country, status, candidates(full_name)')
-        .or(`visa_type.ilike.${term},country.ilike.${term}`)
-        .limit(3),
-      supabase.from('invoices')
-        .select('id, invoice_no, total, status, candidates(full_name)')
-        .or(`invoice_no.ilike.${term}`)
-        .limit(3),
-    ])
+    try {
+      const [
+        { data: candidates, error: e1 },
+        { data: passports,  error: e2 },
+        { data: visas,      error: e3 },
+        { data: invoices,   error: e4 },
+      ] = await Promise.all([
+        supabase.from('candidates')
+          .select('id, full_name, phone, nationality')
+          .or(`full_name.ilike.${term},phone.ilike.${term}`)
+          .limit(4),
+        supabase.from('passports')
+          .select('id, passport_no, status, candidates(full_name)')
+          .or(`passport_no.ilike.${term}`)
+          .limit(4),
+        supabase.from('visa_applications')
+          .select('id, visa_type, country, status, candidates(full_name)')
+          .or(`visa_type.ilike.${term},country.ilike.${term}`)
+          .limit(3),
+        supabase.from('invoices')
+          .select('id, invoice_no, total, status, candidates(full_name)')
+          .or(`invoice_no.ilike.${term}`)
+          .limit(3),
+      ])
 
-    const all = [
-      ...(candidates || []).map(c => ({
-        id: c.id, type: 'candidate',
-        title: c.full_name,
-        subtitle: `${c.phone || ''} · ${c.nationality || ''}`,
-        path: '/candidates',
-        data: c,
-      })),
-      ...(passports || []).map(p => ({
-        id: p.id, type: 'passport',
-        title: p.passport_no,
-        subtitle: `${p.candidates?.full_name} · ${p.status?.replaceAll('_', ' ')}`,
-        path: '/passports',
-        data: p,
-      })),
-      ...(visas || []).map(v => ({
-        id: v.id, type: 'visa',
-        title: `${v.visa_type || 'Visa'} — ${v.country || ''}`,
-        subtitle: `${v.candidates?.full_name} · ${v.status?.replaceAll('_', ' ')}`,
-        path: '/visa',
-        data: v,
-      })),
-      ...(invoices || []).map(i => ({
-        id: i.id, type: 'invoice',
-        title: i.invoice_no,
-        subtitle: `${i.candidates?.full_name} · ৳${Number.parseFloat(i.total||0).toLocaleString()} · ${i.status}`,
-        path: '/accounts',
-        data: i,
-      })),
-    ]
+      // Surface the first error encountered across all queries
+      const firstError = e1 || e2 || e3 || e4
+      if (firstError) throw firstError
 
-    setResults(all)
-    setLoading(false)
+      const all = [
+        ...(candidates || []).map(c => ({
+          id: c.id, type: 'candidate',
+          title: c.full_name,
+          subtitle: `${c.phone || ''} · ${c.nationality || ''}`,
+          path: '/candidates',
+          data: c,
+        })),
+        ...(passports || []).map(p => ({
+          id: p.id, type: 'passport',
+          title: p.passport_no,
+          subtitle: `${p.candidates?.full_name} · ${p.status?.replaceAll('_', ' ')}`,
+          path: '/passports',
+          data: p,
+        })),
+        ...(visas || []).map(v => ({
+          id: v.id, type: 'visa',
+          title: `${v.visa_type || 'Visa'} — ${v.country || ''}`,
+          subtitle: `${v.candidates?.full_name} · ${v.status?.replaceAll('_', ' ')}`,
+          path: '/visa',
+          data: v,
+        })),
+        ...(invoices || []).map(i => ({
+          id: i.id, type: 'invoice',
+          title: i.invoice_no,
+          subtitle: `${i.candidates?.full_name} · ৳${Number.parseFloat(i.total||0).toLocaleString()} · ${i.status}`,
+          path: '/accounts',
+          data: i,
+        })),
+      ]
+
+      setResults(all)
+    } catch (err) {
+      console.error('GlobalSearch error:', err)
+      setSearchError('Search failed. Check your connection and try again.')
+      setResults([])
+    } finally {
+      setLoading(false)
+    }
   }
 
   function handleSelect(result) {
@@ -102,11 +115,11 @@ export default function GlobalSearch() {
     setOpen(false)
     setQuery('')
     setResults([])
+    setSearchError(null)
   }
 
   return (
     <>
-      {/* Search Button */}
       <button
         onClick={() => setOpen(true)}
         className="p-2 text-slate-400 hover:text-slate-200 transition-colors"
@@ -115,10 +128,8 @@ export default function GlobalSearch() {
         <Search size={20} />
       </button>
 
-      {/* Full Screen Search Overlay */}
       {open && (
         <div className="fixed inset-0 z-50 bg-[#050D1A] flex flex-col">
-          {/* Search Header */}
           <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-800 bg-[#080F1E]">
             <Search size={18} className="text-slate-500 flex-none" />
             <input
@@ -144,7 +155,6 @@ export default function GlobalSearch() {
             </button>
           </div>
 
-          {/* Results */}
           <div className="flex-1 overflow-y-auto p-4">
             {!query && (
               <div className="flex flex-col items-center justify-center h-48 text-slate-600">
@@ -160,7 +170,19 @@ export default function GlobalSearch() {
               </div>
             )}
 
-            {query && !loading && results.length === 0 && (
+            {query && !loading && searchError && (
+              <div className="flex flex-col items-center justify-center h-48 gap-3 text-center">
+                <AlertTriangle size={28} className="text-red-400" />
+                <p className="text-red-400 text-sm">{searchError}</p>
+                <button
+                  onClick={() => search(query)}
+                  className="text-indigo-400 text-xs font-semibold">
+                  Retry
+                </button>
+              </div>
+            )}
+
+            {query && !loading && !searchError && results.length === 0 && (
               <div className="flex flex-col items-center justify-center h-48 text-slate-600">
                 <p className="text-sm">No results for "<span className="text-slate-400">{query}</span>"</p>
               </div>
@@ -168,7 +190,6 @@ export default function GlobalSearch() {
 
             {results.length > 0 && (
               <div className="flex flex-col gap-2">
-                {/* Group by type */}
                 {['candidate','passport','visa','invoice'].map(type => {
                   const group = results.filter(r => r.type === type)
                   if (group.length === 0) return null
