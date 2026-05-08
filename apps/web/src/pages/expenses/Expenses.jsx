@@ -47,7 +47,7 @@ function AddExpenseModal({ onClose, onSaved }) {
             <label className="flex flex-col gap-1">
               <span className="text-xs text-slate-500 font-semibold">Category</span>
               <select value={form.category} onChange={e=>set('category',e.target.value)} className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500">
-                {CATEGORIES.map(c=><option key={c} value={c}>{c.replace('_',' ')}</option>)}
+                {CATEGORIES.map(c=><option key={c} value={c}>{c.replaceAll('_',' ')}</option>)}
               </select>
             </label>
           </div>
@@ -130,7 +130,7 @@ export default function Expenses() {
       </div>
       <div className="flex gap-2 overflow-x-auto pb-1">
         {['all',...CATEGORIES].map(c=>(
-          <button key={c} onClick={()=>setFilterCat(c)} className={`flex-none px-3 py-1.5 rounded-full text-xs font-bold capitalize transition-colors ${filterCat===c?'bg-indigo-500 text-white':'bg-slate-800 text-slate-400'}`}>{c.replace('_',' ')}</button>
+          <button key={c} onClick={()=>setFilterCat(c)} className={`flex-none px-3 py-1.5 rounded-full text-xs font-bold capitalize transition-colors ${filterCat===c?'bg-indigo-500 text-white':'bg-slate-800 text-slate-400'}`}>{c.replaceAll('_',' ')}</button>
         ))}
       </div>
       <div className="relative">
@@ -145,7 +145,7 @@ export default function Expenses() {
               <li key={e.id} className={`flex items-center gap-3 px-4 py-4 ${i<filtered.length-1?'border-b border-slate-800':''}`}>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-0.5">
-                    <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${CAT_COLOR[e.category]||CAT_COLOR.other}`}>{e.category?.replace('_',' ')}</span>
+                    <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${CAT_COLOR[e.category]||CAT_COLOR.other}`}>{e.category?.replaceAll('_',' ')}</span>
                     {e.vendors?.name && <span className="text-[10px] text-slate-500">{e.vendors.name}</span>}
                   </div>
                   <p className="text-slate-200 text-sm font-semibold truncate">{e.description}</p>
