@@ -8,9 +8,13 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       workbox: {
-        // Do NOT precache index.html — a stale cached HTML referencing old
-        // hashed JS chunks causes silent 404s after a new deploy.
-        globPatterns: ['**/*.{js,css,ico,png,svg,woff2}'],
+        // FIX: Added 'html' to globPatterns.
+        // navigateFallback: '/index.html' requires index.html to be in the
+        // precache manifest — otherwise Workbox throws "non-precached-url"
+        // and the app spins forever on load. The old comment was wrong;
+        // stale-HTML risk is mitigated by the NetworkFirst runtime cache below
+        // which always tries the network first before falling back to cache.
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         navigateFallback: '/index.html',
         navigateFallbackDenylist: [/^\/_/, /\/[^/?]+\.[^/]+$/],
         runtimeCaching: [
@@ -25,8 +29,6 @@ export default defineConfig({
         ],
       },
       manifest: {
-        // FIX: Was 'Bhuiyan Books' — corrected to match the actual app name
-        // so users who install the PWA see the right name on their home screen.
         name: 'Bhuiyan Workforce',
         short_name: 'Bhuiyan',
         description: 'Bhuiyan Workforce Management',
