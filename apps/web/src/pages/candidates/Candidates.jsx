@@ -2,31 +2,19 @@ import { useEffect, useState, useCallback } from 'react'
 import { useLocation } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { Plus, Search, ChevronRight, RefreshCw } from 'lucide-react'
+import {
+  CANDIDATE_PIPELINE_STAGES as PIPELINE_STAGES,
+  stageColor,
+  stageLabel,
+} from '../../lib/constants'
 import AddCandidateModal from './AddCandidateModal'
 import CandidateDetail from './CandidateDetail'
 
 const PAGE_SIZE = 20
 
-const PIPELINE_STAGES = [
-  { key: 'new',           label: 'New',            color: 'bg-slate-500/15 text-slate-400'    },
-  { key: 'screening',     label: 'Screening',      color: 'bg-blue-500/15 text-blue-400'      },
-  { key: 'interview',     label: 'Interview',      color: 'bg-yellow-500/15 text-yellow-400'  },
-  { key: 'medical',       label: 'Medical',        color: 'bg-orange-500/15 text-orange-400'  },
-  { key: 'documents',     label: 'Documents',      color: 'bg-purple-500/15 text-purple-400'  },
-  { key: 'visa_applied',  label: 'Visa Applied',   color: 'bg-indigo-500/15 text-indigo-400'  },
-  { key: 'visa_approved', label: 'Visa Approved',  color: 'bg-teal-500/15 text-teal-400'      },
-  { key: 'traveling',     label: 'Traveling',      color: 'bg-emerald-500/15 text-emerald-400'},
-  { key: 'placed',        label: 'Placed',         color: 'bg-green-500/15 text-green-400'    },
-  { key: 'cancelled',     label: 'Cancelled',      color: 'bg-red-500/15 text-red-400'        },
-]
-
-export function stageColor(status) {
-  return PIPELINE_STAGES.find(s => s.key === status)?.color ?? 'bg-slate-500/15 text-slate-400'
-}
-
-export function stageLabel(status) {
-  return PIPELINE_STAGES.find(s => s.key === status)?.label ?? status ?? 'New'
-}
+// stageColor and stageLabel are re-exported so other files that previously
+// imported them from this module (e.g. CandidateDetail) continue to work.
+export { stageColor, stageLabel }
 
 export default function Candidates() {
   const location = useLocation()
