@@ -80,12 +80,12 @@ export default function PassportDetail({ passport: initialPassport, onClose, onU
     const nextStage = WORKFLOW[currentIndex + 1]
     if (!nextStage) return
     setAdvancing(true)
-    const { data: { user } } = await supabase.auth.getUser()
     const { data: { session } } = await supabase.auth.getSession()
+    const user = session?.user
     try {
       const res = await fetch(`${API_URL}/api/v1/passports/status-update`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token}` },
         body: JSON.stringify({ passport_id: passport.id, new_status: nextStage.key, note: note || null, user_id: user.id }),
       })
       if (res.ok) { setEmailSent(true); setTimeout(() => setEmailSent(false), 3000) }
@@ -104,7 +104,8 @@ export default function PassportDetail({ passport: initialPassport, onClose, onU
 
   async function cancelPassport() {
     setCancelling(true)
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { session } } = await supabase.auth.getSession()
+    const user = session?.user
     await supabase.from('passport_workflow_logs').insert({
       passport_id: passport.id, from_status: passport.status,
       to_status: 'cancelled', note: note || 'Cancelled', changed_by: user.id,
