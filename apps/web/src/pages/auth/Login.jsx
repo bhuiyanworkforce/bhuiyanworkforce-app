@@ -25,7 +25,7 @@ export default function Login() {
         {/* Logo */}
         <div className="flex flex-col items-center mb-10">
           <img
-            src="/icon-192x192.png"
+            src="/icon-192.png"
             alt="Bhuiyan Workforce"
             className="w-16 h-16 rounded-2xl mb-4 shadow-lg shadow-indigo-500/30"
           />
