@@ -33,11 +33,13 @@ function AddLoanModal({ onClose, onSaved }) {
     const { data: { session } } = await supabase.auth.getSession()
     const user = session?.user
     const agent = agents.find(a => a.id === form.agent_id)
-    await supabase.from('notifications').insert({
-      user_id: user.id, title: 'Loan Issued',
-      message: `৳${Number.parseFloat(form.amount).toLocaleString()} loan issued to ${agent?.full_name || 'agent'}`,
-      type: 'warning', is_read: false,
-    })
+    if (user) {
+      await supabase.from('notifications').insert({
+        user_id: user.id, title: 'Loan Issued',
+        message: `৳${Number.parseFloat(form.amount).toLocaleString()} loan issued to ${agent?.full_name || 'agent'}`,
+        type: 'warning', is_read: false,
+      })
+    }
     onSaved()
   }
 
