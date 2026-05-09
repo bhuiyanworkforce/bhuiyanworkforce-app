@@ -76,7 +76,9 @@ function VendorDetail({ vendor, onClose }) {
 
   useEffect(() => {
     supabase.from('expenses').select('*').eq('vendor_id', vendor.id).order('date', { ascending: false })
-      .then(({ data }) => { setExpenses(data || []); setLoading(false) })
+      .then(({ data }) => { setExpenses(data || []) })
+      .catch(err => { console.error('[VendorDetail] expenses load failed:', err) })
+      .finally(() => { setLoading(false) })
   }, [vendor.id])
 
   const total = expenses.reduce((s, e) => s + Number.parseFloat(e.amount || 0), 0)
