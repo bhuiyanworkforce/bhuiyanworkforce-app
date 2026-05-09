@@ -84,11 +84,15 @@ export default function AppLayout() {
       </header>
 
       {/* Mobile Menu Overlay */}
-      <button
-        type="button"
-        className={`fixed inset-0 z-50 bg-black/80 transition-all w-full h-full border-0 p-0 ${menuOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+      {/* Using a <div> instead of <button> — a full-screen interactive button
+          is semantically wrong and causes screen readers to announce the entire
+          page background as a focusable element. */}
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Navigation menu"
+        className={`fixed inset-0 z-50 bg-black/80 transition-all ${menuOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
         onClick={closeMenu}
-        aria-label="Close menu overlay"
       >
         <div
           className="fixed inset-y-0 right-0 w-64 bg-[#08050F] border-l border-slate-800 p-5 overflow-y-auto"
@@ -116,7 +120,7 @@ export default function AppLayout() {
                 <UserCircle size={40} className="text-slate-500" aria-hidden="true" />
               )}
               <div>
-                <p className="font-semibold text-white">{profile?.fullName || profile?.full_name}</p>
+                <p className="font-semibold text-white">{profile?.full_name}</p>
                 <p className="text-xs text-slate-500 capitalize">{profile?.role}</p>
               </div>
             </div>
@@ -199,7 +203,7 @@ export default function AppLayout() {
             </button>
           </div>
         </div>
-      </button>
+      </div>
 
       {/* Main Content */}
       <main className="flex-1 px-4 py-6 max-w-7xl mx-auto w-full pb-24">
