@@ -21,7 +21,11 @@ function AddEmployeeModal({ onClose, onSaved }) {
       basic_salary: Number.parseFloat(form.basic_salary),
       status: 'active',
     })
-    if (err) { setError(err.message); setSaving(false); return }
+    // FIX: setSaving(false) now called on both success and failure paths.
+    // Previously it was only called on error — if onSaved() threw or the modal
+    // failed to unmount, the Save button would remain disabled indefinitely.
+    setSaving(false)
+    if (err) { setError(err.message); return }
     onSaved()
   }
 
