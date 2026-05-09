@@ -51,7 +51,13 @@ export default function Dashboard() {
   const [expiringPassports, setExpiringPassports] = useState([])
   const [recentActivity, setRecentActivity] = useState([])
 
-  useEffect(() => { if (user) fetchAll() }, [user])
+  useEffect(() => {
+    // FIX: On hard refresh, user starts null while auth initializes.
+    // If user is null we still must clear loading — otherwise the spinner
+    // hangs if the effect already ran before user was set.
+    if (user) fetchAll()
+    else setLoading(false)
+  }, [user])
 
   async function fetchAll() {
     setError(null)
