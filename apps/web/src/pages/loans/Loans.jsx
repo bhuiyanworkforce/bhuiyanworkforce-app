@@ -2,12 +2,9 @@ import PropTypes from 'prop-types'
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { Plus, X, ChevronDown, ChevronUp, AlertTriangle, RefreshCw } from 'lucide-react'
+import { LOAN_STATUS_COLOR as STATUS_COLOR } from '../../lib/constants'
 
-const STATUS_COLOR = {
-  active:  'bg-amber-500/15 text-amber-400',
-  repaid:  'bg-emerald-500/15 text-emerald-400',
-  partial: 'bg-blue-500/15 text-blue-400',
-}
+// STATUS_COLOR is now imported from ../../lib/constants
 
 function AddLoanModal({ onClose, onSaved }) {
   const [form, setForm] = useState({ agent_id:'', amount:'', issued_date: new Date().toISOString().slice(0,10), due_date:'', purpose:'', notes:'' })
