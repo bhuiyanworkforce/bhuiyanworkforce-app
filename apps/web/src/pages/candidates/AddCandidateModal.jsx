@@ -30,7 +30,8 @@ export default function AddCandidateModal({ open, onClose, onSaved }) {
   async function handleSave() {
     if (!form.full_name) { setError('Name is required'); return }
     setSaving(true)
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { session } } = await supabase.auth.getSession()
+    const user = session?.user
     const { error } = await supabase.from('candidates').insert({
       full_name: form.full_name, phone: form.phone,
       nationality: form.nationality, address: form.address,
