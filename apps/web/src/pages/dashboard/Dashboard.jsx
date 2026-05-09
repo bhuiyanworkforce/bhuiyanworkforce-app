@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useAuth } from '../../context/AuthContext'
 import { supabase } from '../../lib/supabase'
 import { useNavigate } from 'react-router-dom'
 import {
@@ -35,6 +36,7 @@ function settled(result, fallback) {
 
 export default function Dashboard() {
   const navigate = useNavigate()
+  const { user } = useAuth()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [stats, setStats] = useState({
@@ -49,7 +51,7 @@ export default function Dashboard() {
   const [expiringPassports, setExpiringPassports] = useState([])
   const [recentActivity, setRecentActivity] = useState([])
 
-  useEffect(() => { fetchAll() }, [])
+  useEffect(() => { if (user) fetchAll() }, [user])
 
   async function fetchAll() {
     setError(null)
