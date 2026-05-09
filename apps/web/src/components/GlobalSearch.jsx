@@ -38,12 +38,10 @@ export default function GlobalSearch() {
     const term = `%${safe}%`
 
     try {
-      const [
-        { data: candidates, error: e1 },
-        { data: passports,  error: e2 },
-        { data: visas,      error: e3 },
-        { data: invoices,   error: e4 },
-      ] = await Promise.all([
+      // FIX: allSettled so one failing source (e.g. RLS on invoices) doesn't
+      // wipe candidates/passports/visa results. Your error UI + retry button
+      // below are preserved — they now fire only when ALL sources fail.
+      const [r0, r1, r2, r3] = await Promise.allSettled([
         supabase.from('candidates')
           .select('id, full_name, phone, nationality')
           .or(`full_name.ilike.${term},phone.ilike.${term}`)
@@ -62,9 +60,15 @@ export default function GlobalSearch() {
           .limit(3),
       ])
 
-      // Surface the first error encountered across all queries
-      const firstError = e1 || e2 || e3 || e4
-      if (firstError) throw firstError
+      const candidates = (r0.status === 'fulfilled' && !r0.value.error) ? (r0.value.data || []) : []
+      const passports  = (r1.status === 'fulfilled' && !r1.value.error) ? (r1.value.data || []) : []
+      const visas      = (r2.status === 'fulfilled' && !r2.value.error) ? (r2.value.data || []) : []
+      const invoices   = (r3.status === 'fulfilled' && !r3.value.error) ? (r3.value.data || []) : []
+
+      const allFailed = [r0, r1, r2, r3].every(
+        r => r.status === 'rejected' || (r.status === 'fulfilled' && r.value.error)
+      )
+      if (allFailed) throw new Error('All search sources failed')
 
       const all = [
         ...(candidates || []).map(c => ({
