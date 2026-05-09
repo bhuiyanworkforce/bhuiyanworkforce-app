@@ -190,7 +190,7 @@ export default function CreateInvoiceModal({ onClose, onSaved }) {
                       <label htmlFor={`item-price-${item.id}`} className="text-[10px] text-slate-500 mb-1 block">Price (৳)</label>
                       <input
                         id={`item-price-${item.id}`}
-                        type="number" placeholder="0"
+                        type="number" min="0" placeholder="0"
                         value={item.unit_price}
                         onChange={e => updateItem(item.id, 'unit_price', e.target.value)}
                         className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-indigo-500"
