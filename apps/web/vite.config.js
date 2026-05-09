@@ -7,24 +7,32 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-
-      // FIX: Without navigateFallback, the Workbox service worker had no
-      // instruction for what to serve on navigation requests (e.g. refreshing
-      // /dashboard). It fell through to the network, which on Cloudflare Pages
-      // returned a cached or stale response that never resolved — causing the
-      // infinite spinner on every hard refresh.
-      //
-      // navigateFallback: '/index.html' tells Workbox to serve index.html for
-      // all navigation requests that don't match a precached asset, which is
-      // exactly what a SPA needs. React Router then takes over client-side.
-      //
-      // navigateFallbackDenylist excludes the Cloudflare _redirects file and
-      // any API/worker routes from being swallowed by the fallback.
       workbox: {
+        // CRITICAL FIX: Do NOT precache index.html.
+        // When a new deploy happens, the SW would serve the OLD cached
+        // index.html which references OLD hashed JS chunks that no longer
+        // exist on the server — causing silent 404s and an infinite spinner.
+        // By excluding HTML from precache, the browser always fetches a
+        // fresh index.html from the network on navigation.
+        globPatterns: ['**/*.{js,css,ico,png,svg,woff2}'],
+
+        // For navigation requests (typing a URL, refreshing), always go to
+        // the network first. Fall back to index.html only if offline.
         navigateFallback: '/index.html',
         navigateFallbackDenylist: [/^\/_/, /\/[^/?]+\.[^/]+$/],
-      },
 
+        // Network-first for navigation so fresh HTML is always loaded
+        runtimeCaching: [
+          {
+            urlPattern: ({ request }) => request.mode === 'navigate',
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'navigation-cache',
+              networkTimeoutSeconds: 5,
+            },
+          },
+        ],
+      },
       manifest: {
         name: 'Bhuiyan Books',
         short_name: 'Bhuiyan Books',
