@@ -37,13 +37,18 @@ export default function InvoiceDetail({ invoice: initialInvoice, onClose, onUpda
 
   useEffect(() => {
     async function load() {
-      const [{ data: it }, { data: pay }] = await Promise.all([
-        supabase.from('invoice_items').select('*').eq('invoice_id', invoice.id),
-        supabase.from('payments').select('*').eq('invoice_id', invoice.id).order('created_at', { ascending: false }),
-      ])
-      setItems(it || [])
-      setPayments(pay || [])
-      setLoading(false)
+      try {
+        const [{ data: it }, { data: pay }] = await Promise.all([
+          supabase.from('invoice_items').select('*').eq('invoice_id', invoice.id),
+          supabase.from('payments').select('*').eq('invoice_id', invoice.id).order('created_at', { ascending: false }),
+        ])
+        setItems(it || [])
+        setPayments(pay || [])
+      } catch (err) {
+        console.error('[InvoiceDetail] load failed:', err)
+      } finally {
+        setLoading(false)
+      }
     }
     load()
   }, [])
