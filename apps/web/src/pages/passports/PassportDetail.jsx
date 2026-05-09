@@ -52,13 +52,20 @@ export default function PassportDetail({ passport: initialPassport, onClose, onU
   useEffect(() => { fetchLogs() }, [])
 
   async function fetchLogs() {
-    const { data } = await supabase
-      .from('passport_workflow_logs')
-      .select('*, profiles(full_name)')
-      .eq('passport_id', passport.id)
-      .order('changed_at', { ascending: false })
-    setLogs(data || [])
-    setLoading(false)
+    try {
+      const { data, error } = await supabase
+        .from('passport_workflow_logs')
+        .select('*, profiles(full_name)')
+        .eq('passport_id', passport.id)
+        .order('changed_at', { ascending: false })
+      if (error) throw error
+      setLogs(data || [])
+    } catch (err) {
+      console.error('[PassportDetail] fetchLogs failed:', err)
+      setLogs([])
+    } finally {
+      setLoading(false)
+    }
   }
 
   function handleEdited() {
