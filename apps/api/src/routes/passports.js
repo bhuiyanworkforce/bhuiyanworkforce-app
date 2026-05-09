@@ -8,6 +8,10 @@ const VALID_STATUSES = [
   'calling_list', 'visa_stamping', 'mofa', 'traveling', 'returned', 'cancelled',
 ]
 
+// Rate limit: max requests per user per window
+const RATE_LIMIT_MAX    = 10
+const RATE_LIMIT_WINDOW = 60 // seconds
+
 function getSupabase(env) {
   return createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_KEY)
 }
@@ -23,6 +27,41 @@ async function getAuthUser(c) {
   ).auth.getUser()
   if (error || !user) return null
   return user
+}
+
+// FIX: Rate limit status-update calls per authenticated user using Cloudflare KV.
+//
+// A compromised or abused token could otherwise spam status updates and trigger
+// hundreds of Resend emails in seconds. This middleware limits each user to
+// RATE_LIMIT_MAX calls per RATE_LIMIT_WINDOW seconds and returns 429 if exceeded.
+//
+// The KV store (RATE_LIMIT_KV) must be added to wrangler.toml:
+//   [[kv_namespaces]]
+//   binding = "RATE_LIMIT_KV"
+//   id      = "<your-kv-namespace-id>"
+//
+// If KV is not configured (e.g. local dev without a namespace), the check is
+// skipped so the route still works — with a console warning.
+async function checkRateLimit(env, userId) {
+  if (!env.RATE_LIMIT_KV) {
+    console.warn('[rate-limit] RATE_LIMIT_KV binding not found — skipping rate limit check')
+    return { allowed: true }
+  }
+
+  const key      = `rl:passport-status:${userId}`
+  const existing = await env.RATE_LIMIT_KV.get(key)
+  const count    = existing ? parseInt(existing, 10) : 0
+
+  if (count >= RATE_LIMIT_MAX) {
+    return { allowed: false, retryAfter: RATE_LIMIT_WINDOW }
+  }
+
+  // Increment counter; set TTL only on first request so the window is fixed
+  await env.RATE_LIMIT_KV.put(key, String(count + 1), {
+    expirationTtl: RATE_LIMIT_WINDOW,
+  })
+
+  return { allowed: true }
 }
 
 function escHtml(s) {
@@ -45,6 +84,16 @@ async function sendEmail(env, { to, subject, html }) {
 app.post('/status-update', async (c) => {
   const user = await getAuthUser(c)
   if (!user) return c.json({ error: 'Unauthorized' }, 401)
+
+  // FIX: Rate limiting — 10 status updates per user per 60 seconds
+  const { allowed, retryAfter } = await checkRateLimit(c.env, user.id)
+  if (!allowed) {
+    return c.json(
+      { error: `Rate limit exceeded. Try again in ${retryAfter} seconds.` },
+      429,
+      { 'Retry-After': String(retryAfter) }
+    )
+  }
 
   try {
     const body = await c.req.json()
