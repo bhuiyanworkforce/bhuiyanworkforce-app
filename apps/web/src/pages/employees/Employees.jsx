@@ -58,7 +58,7 @@ function AddEmployeeModal({ onClose, onSaved }) {
           </label>
           <label className="flex flex-col gap-1">
             <span className="text-xs text-slate-500 font-semibold">Basic Salary (৳) *</span>
-            <input type="number" value={form.basic_salary} onChange={e => set('basic_salary', e.target.value)} placeholder="0"
+            <input type="number" min="0" value={form.basic_salary} onChange={e => set('basic_salary', e.target.value)} placeholder="0"
               className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500"/>
           </label>
           <button type="button" onClick={handleSave} disabled={saving}
@@ -232,7 +232,7 @@ function EmployeeDetail({ employee: initial, onClose, onUpdated }) {
               </label>
               <label className="flex flex-col gap-1">
                 <span className="text-xs text-slate-500 font-semibold">Basic Salary (৳) *</span>
-                <input type="number" value={editForm.basic_salary} onChange={e => setEditForm(p => ({...p, basic_salary: e.target.value}))}
+                <input type="number" min="0" value={editForm.basic_salary} onChange={e => setEditForm(p => ({...p, basic_salary: e.target.value}))}
                   className="bg-slate-800 border border-slate-700 text-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-500"/>
               </label>
               <div className="flex gap-3 mt-2">
