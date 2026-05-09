@@ -89,7 +89,9 @@ function EmployeeDetail({ employee: initial, onClose, onUpdated }) {
   useEffect(() => {
     supabase.from('employee_payroll').select('*').eq('employee_id', employee.id)
       .order('year', { ascending: false }).order('month', { ascending: false })
-      .then(({ data }) => { setPayrolls(data || []); setLoading(false) })
+      .then(({ data }) => { setPayrolls(data || []) })
+      .catch(err => { console.error('[EmployeeDetail] payroll load failed:', err) })
+      .finally(() => { setLoading(false) })
   }, [employee.id])
 
   async function toggleStatus() {
@@ -264,10 +266,15 @@ export default function Employees() {
 
   const fetchEmployees = useCallback(async () => {
     setError(null)
-    const { data, error: err } = await supabase.from('employees').select('*').order('name')
-    if (err) { setError('Failed to load employees. Tap refresh to try again.'); setLoading(false); return }
-    setEmployees(data || [])
-    setLoading(false)
+    try {
+      const { data, error: err } = await supabase.from('employees').select('*').order('name')
+      if (err) throw err
+      setEmployees(data || [])
+    } catch {
+      setError('Failed to load employees. Tap refresh to try again.')
+    } finally {
+      setLoading(false)
+    }
   }, [])
 
   useEffect(() => { fetchEmployees() }, [fetchEmployees])
