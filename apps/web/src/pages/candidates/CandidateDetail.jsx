@@ -64,15 +64,20 @@ export default function CandidateDetail({ candidate: initialCandidate, onClose }
 
   useEffect(() => {
     async function load() {
-      const [{ data: p }, { data: inv }, { data: docs }] = await Promise.all([
-        supabase.from('passports').select('*').eq('candidate_id', candidate.id).order('created_at', { ascending: false }),
-        supabase.from('invoices').select('*').eq('candidate_id', candidate.id).order('issued_at', { ascending: false }),
-        supabase.from('candidate_documents').select('*').eq('candidate_id', candidate.id).order('created_at', { ascending: false }),
-      ])
-      setPassports(p || [])
-      setInvoices(inv || [])
-      setDocuments(docs || [])
-      setLoading(false)
+      try {
+        const [{ data: p }, { data: inv }, { data: docs }] = await Promise.all([
+          supabase.from('passports').select('*').eq('candidate_id', candidate.id).order('created_at', { ascending: false }),
+          supabase.from('invoices').select('*').eq('candidate_id', candidate.id).order('issued_at', { ascending: false }),
+          supabase.from('candidate_documents').select('*').eq('candidate_id', candidate.id).order('created_at', { ascending: false }),
+        ])
+        setPassports(p || [])
+        setInvoices(inv || [])
+        setDocuments(docs || [])
+      } catch (err) {
+        console.error('[CandidateDetail] load failed:', err)
+      } finally {
+        setLoading(false)
+      }
     }
     load()
   }, [candidate.id])
