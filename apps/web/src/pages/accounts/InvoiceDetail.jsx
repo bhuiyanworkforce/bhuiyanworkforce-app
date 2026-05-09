@@ -56,7 +56,8 @@ export default function InvoiceDetail({ invoice: initialInvoice, onClose, onUpda
     if (!amount || amount <= 0) return alert('Enter a valid amount')
     if (amount > remaining + 0.01) return alert(`Max payable is ৳${remaining.toLocaleString()}`)
     setPaying(true)
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { session } } = await supabase.auth.getSession()
+    const user = session?.user
     const { data: pay, error } = await supabase.from('payments').insert({
       invoice_id: invoice.id,
       amount,
