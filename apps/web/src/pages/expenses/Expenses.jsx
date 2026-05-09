@@ -2,14 +2,9 @@ import PropTypes from 'prop-types'
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { Plus, Search, TrendingDown, X } from 'lucide-react'
+import { EXPENSE_CATEGORIES as CATEGORIES, EXPENSE_CAT_COLOR as CAT_COLOR } from '../../lib/constants'
 
-const CATEGORIES = ['salary','rent','embassy_fee','medical','travel','office','other']
-const CAT_COLOR = {
-  salary:'bg-purple-500/15 text-purple-400', rent:'bg-rose-500/15 text-rose-400',
-  embassy_fee:'bg-blue-500/15 text-blue-400', medical:'bg-teal-500/15 text-teal-400',
-  travel:'bg-amber-500/15 text-amber-400', office:'bg-indigo-500/15 text-indigo-400',
-  other:'bg-slate-500/15 text-slate-400',
-}
+// CATEGORIES and CAT_COLOR are now imported from ../../lib/constants
 
 function AddExpenseModal({ onClose, onSaved }) {
   const [form, setForm] = useState({ date: new Date().toISOString().slice(0,10), category:'other', description:'', amount:'', payment_method:'cash', reference_no:'', vendor_id:'' })
