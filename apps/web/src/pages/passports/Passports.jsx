@@ -30,8 +30,17 @@ const PAGE_SIZE = 20
 //
 // Fix: Split into two separate queries — one for passport_no, one for
 // candidate full_name — then merge and deduplicate by id client-side.
-// This is the correct approach when PostgREST foreign-table filtering
-// is not available via simple .or().
+//
+// FIX 2: When a search term is active, the previous code still applied
+// DB-level .limit(PAGE_SIZE) to each branch, capping the merged pool at
+// 2×PAGE_SIZE items. Paginating over that small pool with client-side slice
+// meant page 2 was almost always empty even when more results exist in the DB.
+//
+// Fix: In search mode we fetch up to SEARCH_CAP results per branch (enough
+// for practical use) and do pagination purely client-side over the merged set.
+// When no search term is present we use proper server-side RANGE pagination.
+const SEARCH_CAP = 200 // max results per branch when a search term is active
+
 async function fetchPassportsBySearch(supabaseClient, { searchTerm, status, from, to, newOffset }) {
   // Base query builder (no search filter — applied per-branch below)
   function base() {
@@ -49,19 +58,20 @@ async function fetchPassportsBySearch(supabaseClient, { searchTerm, status, from
   const term = searchTerm?.trim()
 
   if (!term) {
-    // No search term — simple paginated query
+    // No search term — proper server-side paginated query
     const { data } = await base().range(newOffset, newOffset + PAGE_SIZE - 1)
-    return data || []
+    return { rows: data || [], isSearchMode: false }
   }
 
-  // Two parallel queries: match by passport_no OR by candidate name
+  // FIX: Use SEARCH_CAP instead of PAGE_SIZE so the merged pool is large
+  // enough to paginate into page 2, 3, etc. without hitting an empty wall.
   const [byPassportNo, byCandidateName] = await Promise.all([
-    base().ilike('passport_no', `%${term}%`).limit(PAGE_SIZE),
-    base().ilike('candidates.full_name', `%${term}%`).limit(PAGE_SIZE),
+    base().ilike('passport_no', `%${term}%`).limit(SEARCH_CAP),
+    base().ilike('candidates.full_name', `%${term}%`).limit(SEARCH_CAP),
   ])
 
   // Merge and deduplicate by passport id
-  const seen = new Set()
+  const seen   = new Set()
   const merged = []
   for (const p of [...(byPassportNo.data || []), ...(byCandidateName.data || [])]) {
     if (!seen.has(p.id)) {
@@ -70,8 +80,8 @@ async function fetchPassportsBySearch(supabaseClient, { searchTerm, status, from
     }
   }
 
-  // Apply pagination on the merged result
-  return merged.slice(newOffset, newOffset + PAGE_SIZE)
+  // Client-side pagination over the full merged set
+  return { rows: merged.slice(newOffset, newOffset + PAGE_SIZE), isSearchMode: true, total: merged.length }
 }
 
 export default function Passports() {
@@ -110,12 +120,21 @@ export default function Passports() {
     if (newOffset === 0) setLoading(true)
     else setLoadingMore(true)
 
-    const results = await fetchPassportsBySearch(supabase, { searchTerm, status, from, to, newOffset })
+    const { rows, isSearchMode, total } = await fetchPassportsBySearch(
+      supabase, { searchTerm, status, from, to, newOffset }
+    )
 
-    if (newOffset === 0) setPassports(results)
-    else setPassports(prev => [...prev, ...results])
+    if (newOffset === 0) setPassports(rows)
+    else setPassports(prev => [...prev, ...rows])
 
-    setHasMore(results.length === PAGE_SIZE)
+    // FIX: In search mode we know the full merged total, so we can set
+    // hasMore accurately without relying on rows.length === PAGE_SIZE.
+    if (isSearchMode) {
+      setHasMore(newOffset + PAGE_SIZE < total)
+    } else {
+      setHasMore(rows.length === PAGE_SIZE)
+    }
+
     setOffset(newOffset)
     setLoading(false)
     setLoadingMore(false)
