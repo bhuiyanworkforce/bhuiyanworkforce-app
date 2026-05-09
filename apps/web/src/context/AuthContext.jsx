@@ -8,13 +8,14 @@ export function AuthProvider({ children }) {
   const [profile, setProfile]     = useState(null)
   const [loading, setLoading]     = useState(true)
   const [authError, setAuthError] = useState(null)
-  const loadingDone               = useRef(false)
+  const resolved                  = useRef(false)
 
-  const finishLoading = useCallback(() => {
-    if (!loadingDone.current) {
-      loadingDone.current = true
-      setLoading(false)
-    }
+  const finish = useCallback((u, p) => {
+    if (resolved.current) return
+    resolved.current = true
+    setUser(u ?? null)
+    setProfile(p ?? null)
+    setLoading(false)
   }, [])
 
   const fetchProfile = useCallback(async (userId) => {
@@ -24,80 +25,73 @@ export function AuthProvider({ children }) {
         .select('*')
         .eq('id', userId)
         .single()
-
-      if (error) {
-        if (error.code === 'PGRST116') {
-          setProfile(null)
-        } else {
-          console.error('[Auth] fetchProfile failed:', error)
-          setAuthError('Failed to load your profile. Please sign in again.')
-          setProfile(null)
-        }
-      } else {
-        setProfile(data)
-        setAuthError(null)
+      if (error && error.code !== 'PGRST116') {
+        console.error('[Auth] fetchProfile failed:', error)
+        setAuthError('Failed to load profile.')
       }
+      return data ?? null
     } catch (err) {
-      console.error('[Auth] fetchProfile unexpected error:', err)
-      setAuthError('An unexpected error occurred. Please sign in again.')
-      setProfile(null)
-    } finally {
-      finishLoading()
+      console.error('[Auth] fetchProfile error:', err)
+      return null
     }
-  }, [finishLoading])
+  }, [])
 
   useEffect(() => {
-    // ── Safety net 1: auth timeout (network totally dead) ──────────────────
-    const authTimeout = setTimeout(() => {
+    // ── FAST PATH: read session from localStorage immediately, no network ──
+    // getSession() reads the stored session synchronously from localStorage
+    // without making any network call. This resolves instantly even offline.
+    // We use this to unblock the UI immediately, then let onAuthStateChange
+    // handle token refresh in the background.
+    const boot = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (session?.user) {
+          // We have a stored session — show the app immediately
+          // with the stored user, then fetch profile in background
+          setUser(session.user)
+          setLoading(false)  // unblock UI NOW, don't wait for profile
+          const p = await fetchProfile(session.user.id)
+          setProfile(p)
+        } else {
+          finish(null, null)
+        }
+      } catch (err) {
+        console.error('[Auth] boot error:', err)
+        finish(null, null)
+      }
+    }
+
+    boot()
+
+    // ── Safety net: 15s in case everything above hangs ─────────────────────
+    const timeout = setTimeout(() => {
       console.warn('[Auth] Loading timed out — unblocking app')
-      finishLoading()
+      if (!resolved.current) {
+        resolved.current = true
+        setLoading(false)
+      }
     }, 15000)
 
-    // ── Safety net 2: getSession() fallback ────────────────────────────────
-    // If the service worker serves a stale page, onAuthStateChange may never
-    // fire INITIAL_SESSION. getSession() reads directly from localStorage and
-    // resolves immediately — it does NOT make a network call.
-    // This runs in parallel and whichever path resolves first wins (the
-    // loadingDone ref ensures finishLoading() only fires once).
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      // If onAuthStateChange already handled this, loadingDone is true → skip
-      if (loadingDone.current) return
-      console.log('[Auth] getSession() fallback fired')
-      setUser(session?.user ?? null)
-      if (session?.user) {
-        fetchProfile(session.user.id)
-      } else {
-        setProfile(null)
-        finishLoading()
-      }
-    })
-
-    // ── Primary path: onAuthStateChange ───────────────────────────────────
+    // ── Background: keep session in sync after initial load ─────────────────
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (_event, session) => {
+        if (_event === 'INITIAL_SESSION') return // handled by boot() above
         setUser(session?.user ?? null)
-
-        if (session?.user) {
-          if (
-            _event === 'INITIAL_SESSION' ||
-            _event === 'SIGNED_IN'       ||
-            _event === 'USER_UPDATED'
-          ) {
-            await fetchProfile(session.user.id)
-          }
-        } else {
+        if (!session?.user) {
           setProfile(null)
           setAuthError(null)
-          finishLoading()
+        } else if (_event === 'SIGNED_IN' || _event === 'USER_UPDATED') {
+          const p = await fetchProfile(session.user.id)
+          setProfile(p)
         }
       }
     )
 
     return () => {
-      clearTimeout(authTimeout)
+      clearTimeout(timeout)
       subscription.unsubscribe()
     }
-  }, [fetchProfile, finishLoading])
+  }, [fetchProfile, finish])
 
   const signIn = useCallback(async (email, password) => {
     setAuthError(null)
@@ -108,10 +102,11 @@ export function AuthProvider({ children }) {
 
   const signOut = useCallback(async () => {
     setAuthError(null)
-    loadingDone.current = false
+    resolved.current = false
     setLoading(true)
     await supabase.auth.signOut()
-  }, [])
+    finish(null, null)
+  }, [finish])
 
   return (
     <AuthContext.Provider value={{ user, profile, loading, authError, signIn, signOut }}>
