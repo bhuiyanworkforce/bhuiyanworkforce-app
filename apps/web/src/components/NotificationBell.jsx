@@ -98,27 +98,35 @@ export default function NotificationBell() {
   }
 
   async function markAsRead(id) {
-    await supabase.from('notifications').update({ is_read: true }).eq('id', id)
+    const { error } = await supabase.from('notifications').update({ is_read: true }).eq('id', id)
+    if (error) { console.error('markAsRead failed:', error); return }
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: true } : n))
   }
 
   async function markAllAsRead() {
     if (!userId || loading) return
     setLoading(true)
-    await supabase.from('notifications').update({ is_read: true })
+    const { error } = await supabase.from('notifications').update({ is_read: true })
       .eq('user_id', userId).eq('is_read', false)
-    setNotifications(prev => prev.map(n => ({ ...n, is_read: true })))
+    if (error) {
+      console.error('markAllAsRead failed:', error)
+      setFetchError('Failed to mark notifications as read.')
+    } else {
+      setNotifications(prev => prev.map(n => ({ ...n, is_read: true })))
+    }
     setLoading(false)
   }
 
   async function deleteNotification(id) {
-    await supabase.from('notifications').delete().eq('id', id)
+    const { error } = await supabase.from('notifications').delete().eq('id', id)
+    if (error) { console.error('deleteNotification failed:', error); return }
     setNotifications(prev => prev.filter(n => n.id !== id))
   }
 
   async function clearAllNotifications() {
     if (!userId) return
-    await supabase.from('notifications').delete().eq('user_id', userId)
+    const { error } = await supabase.from('notifications').delete().eq('user_id', userId)
+    if (error) { console.error('clearAllNotifications failed:', error); return }
     setNotifications([])
     setConfirmClear(false)
   }
