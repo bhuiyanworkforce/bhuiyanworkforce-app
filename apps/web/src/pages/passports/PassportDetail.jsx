@@ -89,24 +89,34 @@ export default function PassportDetail({ passport: initialPassport, onClose, onU
     setAdvancing(true)
     const { data: { session } } = await supabase.auth.getSession()
     const user = session?.user
+    // SECURITY FIX (Roadmap §3.1): The previous implementation had a catch block
+    // that directly wrote to Supabase if the API call failed. This bypassed
+    // server-side rate limiting and email notifications, creating a potential
+    // abuse vector. Now the API is the single source of truth for status updates.
+    // On failure, we surface the error to the user instead of silently bypassing
+    // security controls.
     try {
       const res = await fetch(`${API_URL}/api/v1/passports/status-update`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token}` },
         body: JSON.stringify({ passport_id: passport.id, new_status: nextStage.key, note: note || null, user_id: user.id }),
       })
-      if (res.ok) { setEmailSent(true); setTimeout(() => setEmailSent(false), 3000) }
-    } catch {
-      await supabase.from('passport_workflow_logs').insert({
-        passport_id: passport.id, from_status: passport.status,
-        to_status: nextStage.key, note: note || null, changed_by: user.id,
-      })
-      await supabase.from('passports').update({ status: nextStage.key }).eq('id', passport.id)
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body?.error || `Server error ${res.status}`)
+      }
+      setEmailSent(true)
+      setTimeout(() => setEmailSent(false), 3000)
+      setNote(''); setShowNote(false)
+      setPassport(prev => ({ ...prev, status: nextStage.key }))
+      onUpdated(nextStage.key)
+      fetchLogs()
+    } catch (err) {
+      console.error('[PassportDetail] advanceStatus failed:', err)
+      alert(`Failed to advance status: ${err.message}\n\nPlease check your connection and try again.`)
+    } finally {
+      setAdvancing(false)
     }
-    setNote(''); setShowNote(false); setAdvancing(false)
-    setPassport(prev => ({ ...prev, status: nextStage.key }))
-    onUpdated(nextStage.key)
-    fetchLogs()
   }
 
   async function cancelPassport() {
