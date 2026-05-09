@@ -16,12 +16,19 @@ export default function GlobalSearch() {
   const [results, setResults] = useState([])
   const [loading, setLoading] = useState(false)
   const [searchError, setSearchError] = useState(null)
+  const [activeIndex, setActiveIndex] = useState(-1)
   const inputRef = useRef(null)
+  const resultRefs = useRef([])
   const navigate = useNavigate()
 
   useEffect(() => {
     if (open) setTimeout(() => inputRef.current?.focus(), 100)
   }, [open])
+
+  useEffect(() => {
+    setActiveIndex(-1)
+    resultRefs.current = []
+  }, [results])
 
   useEffect(() => {
     if (!query.trim()) { setResults([]); setSearchError(null); return }
@@ -118,6 +125,35 @@ export default function GlobalSearch() {
     setResults([])
   }
 
+  // Flatten results in display order for keyboard nav
+  const flatResults = ['candidate','passport','visa','invoice'].flatMap(type =>
+    results.filter(r => r.type === type)
+  )
+
+  function handleKeyDown(e) {
+    if (!results.length) return
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setActiveIndex(prev => {
+        const next = Math.min(prev + 1, flatResults.length - 1)
+        resultRefs.current[next]?.scrollIntoView({ block: 'nearest' })
+        return next
+      })
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setActiveIndex(prev => {
+        const next = Math.max(prev - 1, 0)
+        resultRefs.current[next]?.scrollIntoView({ block: 'nearest' })
+        return next
+      })
+    } else if (e.key === 'Enter' && activeIndex >= 0) {
+      e.preventDefault()
+      handleSelect(flatResults[activeIndex])
+    } else if (e.key === 'Escape') {
+      handleClose()
+    }
+  }
+
   function handleClose() {
     setOpen(false)
     setQuery('')
@@ -143,8 +179,12 @@ export default function GlobalSearch() {
               ref={inputRef}
               value={query}
               onChange={e => setQuery(e.target.value)}
+              onKeyDown={handleKeyDown}
               placeholder="Search candidates, passports, invoices..."
               className="flex-1 bg-transparent text-slate-100 text-base placeholder-slate-500 focus:outline-none"
+              aria-label="Search"
+              aria-autocomplete="list"
+              aria-activedescendant={activeIndex >= 0 ? `search-result-${activeIndex}` : undefined}
             />
             {query && (
               <button
@@ -207,25 +247,41 @@ export default function GlobalSearch() {
                       <p className="text-[10px] font-bold text-slate-600 uppercase tracking-widest px-1 mb-2 mt-3">
                         {label}s
                       </p>
-                      <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
-                        {group.map((result, i) => (
-                          <button
-                            key={result.id}
-                            onClick={() => handleSelect(result)}
-                            className={`w-full flex items-center gap-3 px-4 py-3.5 text-left active:bg-slate-800 transition-colors ${
-                              i < group.length - 1 ? 'border-b border-slate-800' : ''
-                            }`}
-                          >
-                            <div className={`w-9 h-9 rounded-xl ${bg} flex items-center justify-center flex-none`}>
-                              <Icon size={16} className={color} />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-slate-200 text-sm font-semibold truncate">{result.title}</p>
-                              <p className="text-slate-500 text-xs truncate capitalize">{result.subtitle}</p>
-                            </div>
-                            <ChevronRight size={16} className="text-slate-600 flex-none" />
-                          </button>
-                        ))}
+                      <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden" role="listbox">
+                        {group.map((result) => {
+                          const flatIdx = flatResults.indexOf(result)
+                          const isActive = flatIdx === activeIndex
+                          // Highlight matched query term in the title
+                          const titleParts = result.title.split(new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi'))
+                          return (
+                            <button
+                              key={result.id}
+                              id={`search-result-${flatIdx}`}
+                              ref={el => { resultRefs.current[flatIdx] = el }}
+                              onClick={() => handleSelect(result)}
+                              role="option"
+                              aria-selected={isActive}
+                              className={`w-full flex items-center gap-3 px-4 py-3.5 text-left transition-colors border-b border-slate-800 last:border-b-0 ${
+                                isActive ? 'bg-slate-800' : 'active:bg-slate-800'
+                              }`}
+                            >
+                              <div className={`w-9 h-9 rounded-xl ${bg} flex items-center justify-center flex-none`}>
+                                <Icon size={16} className={color} />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-slate-200 text-sm font-semibold truncate">
+                                  {titleParts.map((part, pi) =>
+                                    part.toLowerCase() === query.toLowerCase()
+                                      ? <mark key={pi} className="bg-indigo-500/30 text-indigo-200 rounded px-0.5">{part}</mark>
+                                      : part
+                                  )}
+                                </p>
+                                <p className="text-slate-500 text-xs truncate capitalize">{result.subtitle}</p>
+                              </div>
+                              <ChevronRight size={16} className="text-slate-600 flex-none" />
+                            </button>
+                          )
+                        })}
                       </div>
                     </div>
                   )
