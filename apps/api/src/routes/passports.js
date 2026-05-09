@@ -110,7 +110,7 @@ app.post('/status-update', async (c) => {
     const supabase = getSupabase(c.env)
 
     const { data: passport } = await supabase.from('passports')
-      .select('passport_no, status, candidates(full_name, phone, agents(full_name, email))')
+      .select('passport_no, status, candidates(full_name, phone, agents(full_name, email, profile_id))')
       .eq('id', passport_id).single()
 
     if (!passport) return c.json({ error: 'Passport not found' }, 404)
@@ -123,7 +123,17 @@ app.post('/status-update', async (c) => {
       note: note || null, changed_by: user.id,
     })
 
-    await supabase.from('passports').update({ status: new_status }).eq('id', passport_id)
+    // FIX: Check that the status update actually succeeded before sending email.
+    // Previously the email fired even if the DB update failed, sending agents
+    // a status-change notification for a change that never happened.
+    const { error: updateError } = await supabase
+      .from('passports')
+      .update({ status: new_status })
+      .eq('id', passport_id)
+
+    if (updateError) {
+      return c.json({ error: `Failed to update passport status: ${updateError.message}` }, 500)
+    }
 
     if (agent?.email) {
       const statusLabel = new_status.replaceAll('_', ' ').replace(/\b\w/g, l => l.toUpperCase())
@@ -142,8 +152,14 @@ app.post('/status-update', async (c) => {
       })
     }
 
+    // FIX: Notification should go to the agent whose candidate was updated,
+    // not to the staff member who triggered the change (user.id).
+    // Look up the agent's profile_id so the notification appears in their bell.
+    // Fall back to user.id if the agent has no linked profile (e.g. no login yet).
+    const agentProfileId = agent?.profile_id ?? null
     await supabase.from('notifications').insert({
-      user_id: user.id, title: 'Passport Updated',
+      user_id: agentProfileId ?? user.id,
+      title: 'Passport Updated',
       message: `${candidate.full_name}'s passport moved to ${new_status.replaceAll('_', ' ')}`,
       type: 'info',
     })
