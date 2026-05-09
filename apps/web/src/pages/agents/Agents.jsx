@@ -15,37 +15,43 @@ export default function Agents() {
 
   async function fetchAgents() {
     setLoading(true)
-    // Single query for agents + all their invoices — no N+1
-    const [
-      { data: agentsData },
-      { data: invoicesData },
-      { data: candidateCounts },
-    ] = await Promise.all([
-      supabase.from('agents').select('*').order('created_at', { ascending: false }),
-      supabase.from('invoices').select('agent_id, total, status'),
-      supabase.from('candidates').select('agent_id'),
-    ])
+    try {
+      const [
+        { data: agentsData, error: e1 },
+        { data: invoicesData },
+        { data: candidateCounts },
+      ] = await Promise.all([
+        supabase.from('agents').select('*').order('created_at', { ascending: false }),
+        supabase.from('invoices').select('agent_id, total, status'),
+        supabase.from('candidates').select('agent_id'),
+      ])
+      if (e1) throw e1
 
-    const agents = agentsData || []
-    const invoices = invoicesData || []
-    const candidates = candidateCounts || []
+      const agents = agentsData || []
+      const invoices = invoicesData || []
+      const candidates = candidateCounts || []
 
-    const agentsWithStats = agents.map(agent => {
-      const agentInvoices = invoices.filter(i => i.agent_id === agent.id)
-      const paidTotal = agentInvoices
-        .filter(i => i.status === 'paid')
-        .reduce((s, i) => s + Number.parseFloat(i.total || 0), 0)
-      const commission = (paidTotal * (Number.parseFloat(agent.commission_rate) || 0)) / 100
-      const candidateCount = candidates.filter(c => c.agent_id === agent.id).length
-      return { ...agent, candidateCount, paidTotal, commission }
-    })
+      const agentsWithStats = agents.map(agent => {
+        const agentInvoices = invoices.filter(i => i.agent_id === agent.id)
+        const paidTotal = agentInvoices
+          .filter(i => i.status === 'paid')
+          .reduce((s, i) => s + Number.parseFloat(i.total || 0), 0)
+        const commission = (paidTotal * (Number.parseFloat(agent.commission_rate) || 0)) / 100
+        const candidateCount = candidates.filter(c => c.agent_id === agent.id).length
+        return { ...agent, candidateCount, paidTotal, commission }
+      })
 
-    setAgents(agentsWithStats)
-    setSummary({
-      total: agentsWithStats.length,
-      totalCommission: agentsWithStats.reduce((s, a) => s + a.commission, 0),
-    })
-    setLoading(false)
+      setAgents(agentsWithStats)
+      setSummary({
+        total: agentsWithStats.length,
+        totalCommission: agentsWithStats.reduce((s, a) => s + a.commission, 0),
+      })
+    } catch (err) {
+      console.error('[Agents] fetchAgents failed:', err)
+      setAgents([])
+    } finally {
+      setLoading(false)
+    }
   }
 
   const COLORS = [
