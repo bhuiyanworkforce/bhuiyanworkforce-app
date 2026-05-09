@@ -70,16 +70,25 @@ class ErrorBoundary extends Component {
 // the page once automatically so the user gets fresh chunks silently.
 function lazyWithRetry(importFn) {
   return lazy(() =>
-    importFn().catch(() => {
-      // Chunk failed to load — force a full page reload to bust the SW cache.
-      // Add a flag so we don't reload-loop if the chunk is genuinely broken.
-      if (!sessionStorage.getItem('chunk_reload')) {
-        sessionStorage.setItem('chunk_reload', '1')
-        window.location.reload()
-      }
-      // Return a dummy module so React doesn't crash before the reload fires
-      return { default: () => null }
-    })
+    importFn()
+      .then(module => {
+        // Chunk loaded successfully — clear the reload flag so that a future
+        // stale-chunk error on a different route can still trigger a reload.
+        // Without this, the flag from one bad chunk permanently disables
+        // auto-retry for the rest of the session.
+        sessionStorage.removeItem('chunk_reload')
+        return module
+      })
+      .catch(() => {
+        // Chunk failed to load — force a full page reload to bust the SW cache.
+        // Add a flag so we don't reload-loop if the chunk is genuinely broken.
+        if (!sessionStorage.getItem('chunk_reload')) {
+          sessionStorage.setItem('chunk_reload', '1')
+          window.location.reload()
+        }
+        // Return a dummy module so React doesn't crash before the reload fires
+        return { default: () => null }
+      })
   )
 }
 
