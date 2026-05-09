@@ -7,23 +7,8 @@ import {
   AlertTriangle, TrendingUp, Plus,
   ChevronRight, Clock
 } from 'lucide-react'
-
-const WORKFLOW_STAGES = [
-  { key: 'received',        label: 'Received',        color: 'bg-blue-400' },
-  { key: 'interview',       label: 'Interview',        color: 'bg-yellow-400' },
-  { key: 'medical',         label: 'Medical',          color: 'bg-orange-400' },
-  { key: 'police_clearance',label: 'Police Clearance', color: 'bg-purple-400' },
-  { key: 'bmet',            label: 'BMET',             color: 'bg-cyan-400' },
-  { key: 'calling_list',    label: 'Calling List',     color: 'bg-pink-400' },
-  { key: 'visa_stamping',   label: 'Visa Stamping',    color: 'bg-indigo-400' },
-  { key: 'mofa',            label: 'MOFA',             color: 'bg-violet-400' },
-  { key: 'traveling',       label: 'Traveling',        color: 'bg-emerald-400' },
-  { key: 'returned',        label: 'Returned',         color: 'bg-slate-400' },
-]
-
-function safeFloat(value) {
-  return Number.parseFloat(value || 0)
-}
+import { PASSPORT_WORKFLOW_STAGES as WORKFLOW_STAGES } from '../../lib/constants'
+import { safeFloat } from '../../lib/utils'
 
 // FIX: Helper to safely unwrap a Promise.allSettled result.
 // Returns the value on fulfillment, or the fallback on rejection.
