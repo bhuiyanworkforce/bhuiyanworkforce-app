@@ -41,7 +41,8 @@ export default function AddPassportModal({ open, onClose, onSaved }) {
       return
     }
     setSaving(true)
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { session } } = await supabase.auth.getSession()
+    const user = session?.user
     const { error: err } = await supabase.from('passports').insert({
       candidate_id: form.candidate_id,
       passport_no: form.passport_no.trim().toUpperCase(),
