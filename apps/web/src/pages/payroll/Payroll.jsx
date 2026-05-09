@@ -5,6 +5,19 @@ import { Plus, X } from "lucide-react";
 
 // ─── AGENT PAYROLL ────────────────────────────────────────────────────────────
 
+// FIX: Extract net-amount calculation to a single pure function so the DB
+// insert and the live preview always use the same formula — previously the
+// formula was written twice and could drift if one copy was changed.
+function calcAgentNet({ base_amount, commission_amount, allowance, overtime, bonus, deductions }) {
+  return (Number(base_amount) || 0) + (Number(commission_amount) || 0) +
+    (Number(allowance) || 0) + (Number(overtime) || 0) +
+    (Number(bonus) || 0) - (Number(deductions) || 0)
+}
+
+function calcEmpNet({ basic_salary, bonus, deduction }) {
+  return (Number(basic_salary) || 0) + (Number(bonus) || 0) - (Number(deduction) || 0)
+}
+
 function AddAgentPayrollModal({ onClose, onSaved }) {
   const [agents, setAgents] = useState([]);
   const [form, setForm] = useState({
@@ -17,6 +30,13 @@ function AddAgentPayrollModal({ onClose, onSaved }) {
   const [error, setError] = useState("");
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
 
+  // FIX: Escape key closes the modal (WCAG 2.1 SC 1.4.13)
+  useEffect(() => {
+    function handleKey(e) { if (e.key === 'Escape') onClose(); }
+    document.addEventListener('keydown', handleKey);
+    return () => document.removeEventListener('keydown', handleKey);
+  }, [onClose]);
+
   useEffect(() => {
     supabase.from("agents").select("id, full_name").order("full_name")
       .then(({ data }) => setAgents(data || []));
@@ -27,13 +47,14 @@ function AddAgentPayrollModal({ onClose, onSaved }) {
       setError("Agent, period start and base amount are required"); return;
     }
     setSaving(true);
-    const base = Number(form.base_amount) || 0;
-    const commission = Number(form.commission_amount) || 0;
-    const allowance = Number(form.allowance) || 0;
-    const overtime = Number(form.overtime) || 0;
-    const bonus = Number(form.bonus) || 0;
-    const deductions = Number(form.deductions) || 0;
-    const net_amount = base + commission + allowance + overtime + bonus - deductions;
+    // FIX: Use shared pure function — single source of truth for the formula.
+    const net_amount = calcAgentNet(form);
+    const base       = Number(form.base_amount)       || 0;
+    const commission = Number(form.commission_amount)  || 0;
+    const allowance  = Number(form.allowance)          || 0;
+    const overtime   = Number(form.overtime)           || 0;
+    const bonus      = Number(form.bonus)              || 0;
+    const deductions = Number(form.deductions)         || 0;
 
     const { error: err } = await supabase.from("payroll").insert({
       agent_id: form.agent_id,
@@ -55,9 +76,8 @@ function AddAgentPayrollModal({ onClose, onSaved }) {
     onSaved();
   }
 
-  const net = (Number(form.base_amount)||0) + (Number(form.commission_amount)||0) +
-    (Number(form.allowance)||0) + (Number(form.overtime)||0) +
-    (Number(form.bonus)||0) - (Number(form.deductions)||0);
+  // FIX: Live preview uses the shared pure function — guaranteed identical to the DB insert.
+  const net = calcAgentNet(form);
 
   return (
     <div className="fixed inset-0 z-50 bg-black/70 flex items-end justify-center">
@@ -243,6 +263,13 @@ function AddEmployeePayrollModal({ onClose, onSaved }) {
   const [error, setError] = useState("");
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
 
+  // FIX: Escape key closes the modal (WCAG 2.1 SC 1.4.13)
+  useEffect(() => {
+    function handleKey(e) { if (e.key === 'Escape') onClose(); }
+    document.addEventListener('keydown', handleKey);
+    return () => document.removeEventListener('keydown', handleKey);
+  }, [onClose]);
+
   useEffect(() => {
     supabase.from("employees").select("id, name, basic_salary").eq("status", "active").order("name")
       .then(({ data }) => setEmployees(data || []));
@@ -260,10 +287,11 @@ function AddEmployeePayrollModal({ onClose, onSaved }) {
       setError("Employee and basic salary are required"); return;
     }
     setSaving(true);
-    const basic = Number(form.basic_salary) || 0;
-    const bonus = Number(form.bonus) || 0;
-    const deduction = Number(form.deduction) || 0;
-    const net_salary = basic + bonus - deduction;
+    // FIX: Single source of truth for net salary calculation.
+    const net_salary = calcEmpNet(form);
+    const basic     = Number(form.basic_salary) || 0;
+    const bonus     = Number(form.bonus)        || 0;
+    const deduction = Number(form.deduction)    || 0;
 
     const { error: err } = await supabase.from("employee_payroll").insert({
       employee_id: form.employee_id,
@@ -282,7 +310,8 @@ function AddEmployeePayrollModal({ onClose, onSaved }) {
     onSaved();
   }
 
-  const net = (Number(form.basic_salary)||0) + (Number(form.bonus)||0) - (Number(form.deduction)||0);
+  // FIX: Live preview uses shared pure function — guaranteed identical to the DB insert.
+  const net = calcEmpNet(form);
 
   return (
     <div className="fixed inset-0 z-50 bg-black/70 flex items-end justify-center">
