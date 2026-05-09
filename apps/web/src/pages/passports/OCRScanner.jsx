@@ -1,5 +1,5 @@
 import PropTypes from 'prop-types'
-import { useRef, useState } from 'react'
+import { useRef, useState, useEffect } from 'react'
 import { Camera, Upload, X, Loader } from 'lucide-react'
 
 // Moved to outer scope (L40 – SonarCloud: move parseMRZ to outer scope)
@@ -69,8 +69,24 @@ export default function OCRScanner({ onResult, onClose }) {
   const [scanning, setScanning] = useState(false)
   const [preview, setPreview] = useState(null)
   const [error, setError] = useState('')
+  // Tracks whether the component is still mounted so we never call setState
+  // on an unmounted component (e.g. user navigates away while OCR is running).
+  const mountedRef = useRef(true)
+  // Holds the Tesseract worker so it can be terminated on unmount.
+  const workerRef = useRef(null)
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      // Terminate the Tesseract worker if it is still running when the
+      // component unmounts — prevents memory leaks and setState-after-unmount.
+      workerRef.current?.terminate()
+    }
+  }, [])
 
   async function processImage(file) {
+    if (!mountedRef.current) return
     setScanning(true)
     setError('')
 
@@ -79,10 +95,21 @@ export default function OCRScanner({ onResult, onClose }) {
 
     try {
       const Tesseract = (await import('tesseract.js')).default
-      const { data: { text } } = await Tesseract.recognize(file, 'eng', {
+      // Create and store the worker so it can be terminated on unmount
+      const worker = await Tesseract.createWorker('eng', 1, {
         logger: () => {},
+      })
+      workerRef.current = worker
+
+      const { data: { text } } = await worker.recognize(file, {
         tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789<',
       })
+
+      await worker.terminate()
+      workerRef.current = null
+
+      // Guard: component may have unmounted while OCR was running
+      if (!mountedRef.current) return
 
       const result = parseMRZ(text)
       if (result) {
@@ -91,9 +118,13 @@ export default function OCRScanner({ onResult, onClose }) {
         setError('Could not read passport data. Try a clearer photo of the bottom two lines.')
       }
     } catch (err) {
-      setError(`Scan failed: ${err.message}`)
+      if (mountedRef.current) {
+        setError(`Scan failed: ${err.message}`)
+      }
     } finally {
-      setScanning(false)
+      if (mountedRef.current) {
+        setScanning(false)
+      }
     }
   }
 
