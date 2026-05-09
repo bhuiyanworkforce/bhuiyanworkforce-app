@@ -8,20 +8,11 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       workbox: {
-        // CRITICAL FIX: Do NOT precache index.html.
-        // When a new deploy happens, the SW would serve the OLD cached
-        // index.html which references OLD hashed JS chunks that no longer
-        // exist on the server — causing silent 404s and an infinite spinner.
-        // By excluding HTML from precache, the browser always fetches a
-        // fresh index.html from the network on navigation.
+        // Do NOT precache index.html — a stale cached HTML referencing old
+        // hashed JS chunks causes silent 404s after a new deploy.
         globPatterns: ['**/*.{js,css,ico,png,svg,woff2}'],
-
-        // For navigation requests (typing a URL, refreshing), always go to
-        // the network first. Fall back to index.html only if offline.
         navigateFallback: '/index.html',
         navigateFallbackDenylist: [/^\/_/, /\/[^/?]+\.[^/]+$/],
-
-        // Network-first for navigation so fresh HTML is always loaded
         runtimeCaching: [
           {
             urlPattern: ({ request }) => request.mode === 'navigate',
@@ -34,8 +25,10 @@ export default defineConfig({
         ],
       },
       manifest: {
-        name: 'Bhuiyan Books',
-        short_name: 'Bhuiyan Books',
+        // FIX: Was 'Bhuiyan Books' — corrected to match the actual app name
+        // so users who install the PWA see the right name on their home screen.
+        name: 'Bhuiyan Workforce',
+        short_name: 'Bhuiyan',
         description: 'Bhuiyan Workforce Management',
         theme_color: '#050D1A',
         background_color: '#050D1A',
