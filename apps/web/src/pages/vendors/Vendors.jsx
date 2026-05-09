@@ -1,7 +1,7 @@
 import PropTypes from 'prop-types'
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
-import { Plus, Search, Building2, X, ChevronRight } from 'lucide-react'
+import { Plus, Search, Building2, X, ChevronRight, AlertTriangle, RefreshCw } from 'lucide-react'
 
 const VCATEGORIES = ['general','embassy','medical','travel','printing','bank','other']
 
@@ -70,25 +70,6 @@ AddVendorModal.propTypes = {
   onSaved: PropTypes.func.isRequired,
 }
 
-function renderExpenseList(expenses) {
-  if (expenses.length === 0) {
-    return <p className="text-center text-slate-600 py-8 text-sm">No expenses recorded</p>
-  }
-  return (
-    <ul>
-      {expenses.map((e, i) => (
-        <li key={e.id} className={`px-4 py-3 flex justify-between items-center ${i < expenses.length-1 ? 'border-b border-slate-800' : ''}`}>
-          <div>
-            <p className="text-slate-200 text-sm font-semibold">{e.description || e.category}</p>
-            <p className="text-slate-500 text-xs">{e.date ? new Date(e.date).toLocaleDateString() : '—'}</p>
-          </div>
-          <p className="text-amber-400 font-bold text-sm">৳{Number.parseFloat(e.amount).toLocaleString()}</p>
-        </li>
-      ))}
-    </ul>
-  )
-}
-
 function VendorDetail({ vendor, onClose }) {
   const [expenses, setExpenses] = useState([])
   const [loading, setLoading] = useState(true)
@@ -141,8 +122,20 @@ function VendorDetail({ vendor, onClose }) {
           </div>
           {loading ? (
             <div className="flex justify-center py-8"><div className="w-6 h-6 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin"/></div>
+          ) : expenses.length === 0 ? (
+            <p className="text-center text-slate-600 py-8 text-sm">No expenses recorded</p>
           ) : (
-            renderExpenseList(expenses)
+            <ul>
+              {expenses.map((e, i) => (
+                <li key={e.id} className={`px-4 py-3 flex justify-between items-center ${i < expenses.length-1 ? 'border-b border-slate-800' : ''}`}>
+                  <div>
+                    <p className="text-slate-200 text-sm font-semibold">{e.description || e.category}</p>
+                    <p className="text-slate-500 text-xs">{e.date ? new Date(e.date).toLocaleDateString() : '—'}</p>
+                  </div>
+                  <p className="text-amber-400 font-bold text-sm">৳{Number.parseFloat(e.amount).toLocaleString()}</p>
+                </li>
+              ))}
+            </ul>
           )}
         </div>
       </div>
@@ -152,13 +145,13 @@ function VendorDetail({ vendor, onClose }) {
 
 VendorDetail.propTypes = {
   vendor: PropTypes.shape({
-    id: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired,
-    name: PropTypes.string.isRequired,
+    id:       PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired,
+    name:     PropTypes.string.isRequired,
     category: PropTypes.string,
-    phone: PropTypes.string,
-    email: PropTypes.string,
-    address: PropTypes.string,
-    notes: PropTypes.string,
+    phone:    PropTypes.string,
+    email:    PropTypes.string,
+    address:  PropTypes.string,
+    notes:    PropTypes.string,
   }).isRequired,
   onClose: PropTypes.func.isRequired,
 }
@@ -166,6 +159,8 @@ VendorDetail.propTypes = {
 export default function Vendors() {
   const [vendors, setVendors] = useState([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const [refreshing, setRefreshing] = useState(false)
   const [search, setSearch] = useState('')
   const [showAdd, setShowAdd] = useState(false)
   const [selected, setSelected] = useState(null)
@@ -173,15 +168,28 @@ export default function Vendors() {
   useEffect(() => { fetchVendors() }, [])
 
   async function fetchVendors() {
-    const { data, error } = await supabase.from('vendor_balances').select('*').order('name')
-    if (error) {
-      // fallback to vendors table directly if view fails
-      const { data: d2 } = await supabase.from('vendors').select('*').order('name')
-      setVendors(d2 || [])
-    } else {
-      setVendors(data || [])
+    setError(null)
+    try {
+      const { data, error: viewErr } = await supabase.from('vendor_balances').select('*').order('name')
+      if (viewErr) {
+        // fallback to vendors table directly if view fails
+        const { data: d2, error: tableErr } = await supabase.from('vendors').select('*').order('name')
+        if (tableErr) throw tableErr
+        setVendors(d2 || [])
+      } else {
+        setVendors(data || [])
+      }
+    } catch {
+      setError('Failed to load vendors. Tap refresh to try again.')
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
+  }
+
+  async function handleRefresh() {
+    setRefreshing(true)
+    await fetchVendors()
+    setRefreshing(false)
   }
 
   const filtered = vendors.filter(v =>
@@ -195,30 +203,42 @@ export default function Vendors() {
           <h1 className="text-2xl font-extrabold text-slate-100">Vendors</h1>
           <p className="text-slate-500 text-sm">{vendors.length} vendors</p>
         </div>
-        <button type="button" onClick={()=>setShowAdd(true)} className="flex items-center gap-2 bg-gradient-to-r from-cyan-500 to-blue-600 text-white px-4 py-2.5 rounded-xl text-sm font-bold shadow-lg">
-          <Plus size={16}/> Add
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={handleRefresh} disabled={refreshing} className="p-2 rounded-xl bg-slate-800 text-slate-400 disabled:opacity-50">
+            <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
+          </button>
+          <button type="button" onClick={()=>setShowAdd(true)} className="flex items-center gap-2 bg-gradient-to-r from-cyan-500 to-blue-600 text-white px-4 py-2.5 rounded-xl text-sm font-bold shadow-lg">
+            <Plus size={16}/> Add
+          </button>
+        </div>
       </div>
+
       <div className="relative">
         <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500"/>
-        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search vendors..." className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-9 pr-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500"/>
+        <label htmlFor="vendor-search" className="sr-only">Search vendors</label>
+        <input id="vendor-search" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search vendors..." className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-9 pr-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500"/>
       </div>
-      {loading ? (
+
+      {error ? (
+        <div className="flex flex-col items-center justify-center py-12 gap-3">
+          <AlertTriangle size={28} className="text-red-400" />
+          <p className="text-red-400 text-sm text-center">{error}</p>
+          <button onClick={handleRefresh} className="bg-indigo-500 text-white font-bold px-5 py-2.5 rounded-xl text-sm">Retry</button>
+        </div>
+      ) : loading ? (
         <div className="flex justify-center py-12"><div className="w-8 h-8 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin"/></div>
       ) : (
         <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
           {filtered.length === 0 ? (
-            <div className="flex flex-col items-center py-12 text-slate-600"><Building2 size={32} className="mb-3"/><p className="text-sm">No vendors yet</p></div>
+            <div className="flex flex-col items-center py-12 text-slate-600">
+              <Building2 size={32} className="mb-3"/>
+              <p className="text-sm">{search ? 'No vendors match your search' : 'No vendors yet'}</p>
+            </div>
           ) : (
             <ul>
               {filtered.map((v, i) => (
                 <li key={v.id} className={`flex items-center gap-3 px-4 py-4 transition-colors ${i < filtered.length-1 ? 'border-b border-slate-800' : ''}`}>
-                  <button
-                    type="button"
-                    className="flex items-center gap-3 flex-1 min-w-0 text-left cursor-pointer active:bg-slate-800"
-                    onClick={() => setSelected(v)}
-                    onKeyDown={e => e.key === 'Enter' && setSelected(v)}
-                  >
+                  <button type="button" className="flex items-center gap-3 flex-1 min-w-0 text-left active:bg-slate-800" onClick={() => setSelected(v)}>
                     <div className="w-10 h-10 rounded-xl bg-cyan-500/15 flex items-center justify-center flex-none"><Building2 size={18} className="text-cyan-400"/></div>
                     <div className="flex-1 min-w-0">
                       <p className="text-slate-200 text-sm font-semibold truncate">{v.name}</p>
@@ -233,6 +253,7 @@ export default function Vendors() {
           )}
         </div>
       )}
+
       {showAdd && <AddVendorModal onClose={()=>setShowAdd(false)} onSaved={()=>{setShowAdd(false);fetchVendors()}}/>}
       {selected && <VendorDetail vendor={selected} onClose={()=>setSelected(null)}/>}
     </div>
