@@ -125,7 +125,7 @@ export default function AgentDetail({ agent, onClose }) {
           </div>
           {showPayout && (
             <div className="p-4 border-b border-slate-800 flex flex-col gap-3">
-              <input type="number" value={payoutAmount} onChange={e => setPayoutAmount(e.target.value)}
+              <input type="number" min="0" value={payoutAmount} onChange={e => setPayoutAmount(e.target.value)}
                 placeholder="Amount (৳)"
                 className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm text-slate-100" />
               <input value={payoutNotes} onChange={e => setPayoutNotes(e.target.value)}
