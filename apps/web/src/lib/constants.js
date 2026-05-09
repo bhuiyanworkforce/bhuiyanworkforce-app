@@ -1,3 +1,16 @@
+// ─── Branding & App Identity ────────────────────────────────────────────────────
+// Centralised here so rebranding requires a single-file change (Roadmap §2.1).
+// Previously these strings were hardcoded across Profile.jsx and AppLayout.jsx.
+export const APP_NAME         = 'Bhuiyan Workforce'
+export const APP_COMPANY      = 'Bhuiyan Workforce Ltd.'
+export const APP_BOOKS_LABEL  = 'Bhuiyan Books'
+export const APP_SUPPORT_EMAIL = 'support@bhuiyanworkforce.com'
+
+// ─── Rate limiting constants (mirrors apps/api/src/routes/passports.js) ──────
+// Defined here for reference and UI messaging. The server enforces these values.
+export const RATE_LIMIT_MAX    = 10   // max status updates
+export const RATE_LIMIT_WINDOW = 60   // per this many seconds
+
 // ─── Passport workflow stages ──────────────────────────────────────────────────
 // Used in: Dashboard, Passports, AuditLog
 export const PASSPORT_WORKFLOW_STAGES = [
