@@ -344,7 +344,7 @@ export default function InvoiceDetail({ invoice: initialInvoice, onClose, onUpda
             <div className="flex flex-col gap-4">
               <div className="flex flex-col gap-1">
                 <label htmlFor="pay-amount" className="text-xs text-slate-500 font-semibold">Amount (৳) *</label>
-                <input id="pay-amount" type="number" value={payForm.amount} onChange={e => setPayForm(p => ({...p, amount: e.target.value}))}
+                <input id="pay-amount" type="number" min="0" value={payForm.amount} onChange={e => setPayForm(p => ({...p, amount: e.target.value}))}
                   className="bg-slate-800 border border-slate-700 text-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-500"/>
               </div>
               <div className="flex flex-col gap-1">
@@ -398,9 +398,9 @@ export default function InvoiceDetail({ invoice: initialInvoice, onClose, onUpda
                     placeholder="Description" className="bg-slate-700 border border-slate-600 text-slate-200 rounded-lg p-2 text-sm" />
                   <div className="flex gap-2">
                     <input value={item.quantity} onChange={e => updateEditItem(idx, 'quantity', e.target.value)}
-                      placeholder="Qty" type="number" className="bg-slate-700 border border-slate-600 text-slate-200 rounded-lg p-2 text-sm w-1/3" />
+                      placeholder="Qty" type="number" min="0" className="bg-slate-700 border border-slate-600 text-slate-200 rounded-lg p-2 text-sm w-1/3" />
                     <input value={item.unit_price} onChange={e => updateEditItem(idx, 'unit_price', e.target.value)}
-                      placeholder="Price" type="number" className="bg-slate-700 border border-slate-600 text-slate-200 rounded-lg p-2 text-sm w-1/3" />
+                      placeholder="Price" type="number" min="0" className="bg-slate-700 border border-slate-600 text-slate-200 rounded-lg p-2 text-sm w-1/3" />
                     <button onClick={() => removeEditItem(idx)}
                       className="text-red-400 text-sm w-1/3">Remove</button>
                   </div>
