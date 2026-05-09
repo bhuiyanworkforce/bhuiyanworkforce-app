@@ -97,8 +97,7 @@ export default function Accounts() {
     }
 
     // Escape PostgREST ilike special characters
-    const safe = term.replace(/[%_\]/g, '\$&')
-
+    const safe = term.replace(/[%_\\]/g, '$&')
     // Two parallel queries: by invoice_no OR by candidate name
     const [byInvoiceNo, byCandidateName] = await Promise.all([
       base().ilike('invoice_no', `%${safe}%`).limit(PAGE_SIZE),
