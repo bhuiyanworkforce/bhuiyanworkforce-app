@@ -1,7 +1,7 @@
 import PropTypes from 'prop-types'
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
-import { X, Stamp, Receipt, Phone, Globe, Calendar, Paperclip, Trash2, ChevronDown, Edit2 } from 'lucide-react'
+import { X, Stamp, Receipt, Phone, Globe, Calendar, Paperclip, Trash2, ChevronDown, Edit2, AlertTriangle } from 'lucide-react'
 import EditCandidateModal from './EditCandidateModal'
 
 const PIPELINE_STAGES = [
@@ -19,11 +19,7 @@ const PIPELINE_STAGES = [
 
 function stageColor(s) { return PIPELINE_STAGES.find(p => p.key === s)?.color || 'bg-slate-500/15 text-slate-400' }
 function stageLabel(s) { return PIPELINE_STAGES.find(p => p.key === s)?.label || 'New' }
-
-// FIX L246: move fileSuffix to outer scope (javascript/optimization)
-function fileSuffix(count) {
-  return count !== 1 ? 's' : ''
-}
+function fileSuffix(count) { return count !== 1 ? 's' : '' }
 
 const STATUS_COLOR_P = {
   received:   'bg-slate-500/15 text-slate-400',
@@ -38,16 +34,33 @@ const STATUS_COLOR_I = {
 }
 
 export default function CandidateDetail({ candidate: initialCandidate, onClose }) {
-  const [candidate, setCandidate]     = useState(initialCandidate)
-  const [passports, setPassports]     = useState([])
-  const [invoices, setInvoices]       = useState([])
-  const [documents, setDocuments]     = useState([])
-  const [uploading, setUploading]     = useState(false)
-  const [loading, setLoading]         = useState(true)
-  const [tab, setTab]                 = useState('passports')
+  const [candidate, setCandidate]         = useState(initialCandidate)
+  const [passports, setPassports]         = useState([])
+  const [invoices, setInvoices]           = useState([])
+  const [documents, setDocuments]         = useState([])
+  const [uploading, setUploading]         = useState(false)
+  const [uploadError, setUploadError]     = useState('')
+  const [loading, setLoading]             = useState(true)
+  const [tab, setTab]                     = useState('passports')
   const [showStageMenu, setShowStageMenu] = useState(false)
   const [updatingStage, setUpdatingStage] = useState(false)
-  const [showEdit, setShowEdit]       = useState(false)
+  const [stageError, setStageError]       = useState('')
+  const [showEdit, setShowEdit]           = useState(false)
+
+  // ── Improvement F ──────────────────────────────────────────────────────────
+  // The document delete button previously called the native confirm() dialog,
+  // which:
+  //   - Blocks the JS thread (bad for performance)
+  //   - Looks broken / system-styled on iOS Safari and Android WebView
+  //   - Cannot be styled or dismissed with a swipe
+  //
+  // Fix: replaced confirm() with an in-UI confirmation state (confirmDeleteDoc).
+  // Tapping the trash icon sets the doc to confirm; the row expands to show
+  // Cancel / Delete buttons. This matches the pattern already used in
+  // NotificationBell for clearAllNotifications.
+  // ───────────────────────────────────────────────────────────────────────────
+  const [confirmDeleteDoc, setConfirmDeleteDoc] = useState(null)
+  const [deleting, setDeleting]                 = useState(false)
 
   useEffect(() => {
     async function load() {
@@ -66,28 +79,32 @@ export default function CandidateDetail({ candidate: initialCandidate, onClose }
 
   async function uploadDoc(file) {
     setUploading(true)
+    setUploadError('')
     const ext = file.name.split('.').pop()
     const path = `${candidate.id}/${Date.now()}.${ext}`
     const { error: upErr } = await supabase.storage.from('documents').upload(path, file)
-    if (upErr) { alert(upErr.message); setUploading(false); return }
+    if (upErr) { setUploadError(upErr.message); setUploading(false); return }
     const { error: dbErr } = await supabase.from('candidate_documents').insert({
       candidate_id: candidate.id,
       name: file.name,
       storage_path: path,
       type: ext.toUpperCase(),
     })
-    if (dbErr) { alert(dbErr.message); setUploading(false); return }
+    if (dbErr) { setUploadError(dbErr.message); setUploading(false); return }
     const { data: docs } = await supabase.from('candidate_documents')
       .select('*').eq('candidate_id', candidate.id).order('created_at', { ascending: false })
     setDocuments(docs || [])
     setUploading(false)
   }
 
-  async function deleteDoc(doc) {
-    if (!confirm(`Delete "${doc.name}"?`)) return
-    await supabase.storage.from('documents').remove([doc.storage_path])
-    await supabase.from('candidate_documents').delete().eq('id', doc.id)
-    setDocuments(prev => prev.filter(d => d.id !== doc.id))
+  async function confirmAndDeleteDoc() {
+    if (!confirmDeleteDoc) return
+    setDeleting(true)
+    await supabase.storage.from('documents').remove([confirmDeleteDoc.storage_path])
+    await supabase.from('candidate_documents').delete().eq('id', confirmDeleteDoc.id)
+    setDocuments(prev => prev.filter(d => d.id !== confirmDeleteDoc.id))
+    setConfirmDeleteDoc(null)
+    setDeleting(false)
   }
 
   async function downloadDoc(doc) {
@@ -97,8 +114,9 @@ export default function CandidateDetail({ candidate: initialCandidate, onClose }
 
   async function updateStage(newStage) {
     setUpdatingStage(true)
+    setStageError('')
     const { error } = await supabase.from('candidates').update({ status: newStage }).eq('id', candidate.id)
-    if (error) { alert(error.message); setUpdatingStage(false); return }
+    if (error) { setStageError(error.message); setUpdatingStage(false); return }
     setCandidate(prev => ({ ...prev, status: newStage }))
     setShowStageMenu(false)
     setUpdatingStage(false)
@@ -109,7 +127,6 @@ export default function CandidateDetail({ candidate: initialCandidate, onClose }
     setShowEdit(false)
   }
 
-  // FIX L341 & L343: extract nested ternary tab-content logic into independent statements
   function renderTabContent() {
     if (tab === 'passports') {
       return (
@@ -127,7 +144,6 @@ export default function CandidateDetail({ candidate: initialCandidate, onClose }
                       {p.place_of_issue || p.issue_country || '—'} · Exp: {p.expiry_date ? new Date(p.expiry_date).toLocaleDateString() : '—'}
                     </p>
                   </div>
-                  {/* FIX L57: String#replaceAll() over String#replace() */}
                   <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${STATUS_COLOR_P[p.status] || 'bg-indigo-500/15 text-indigo-400'}`}>
                     {p.status?.replaceAll('_', ' ')}
                   </span>
@@ -153,7 +169,7 @@ export default function CandidateDetail({ candidate: initialCandidate, onClose }
                     <p className="text-slate-500 text-xs">{new Date(inv.issued_at).toLocaleDateString()}</p>
                   </div>
                   <div className="flex flex-col items-end gap-1">
-                    <p className="text-white font-bold text-sm">৳{parseFloat(inv.total || 0).toLocaleString()}</p>
+                    <p className="text-white font-bold text-sm">৳{Number.parseFloat(inv.total || 0).toLocaleString()}</p>
                     <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${STATUS_COLOR_I[inv.status] || 'bg-slate-700 text-slate-300'}`}>
                       {inv.status}
                     </span>
@@ -165,6 +181,7 @@ export default function CandidateDetail({ candidate: initialCandidate, onClose }
       )
     }
 
+    // Documents tab
     return (
       <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
         <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800">
@@ -175,25 +192,60 @@ export default function CandidateDetail({ candidate: initialCandidate, onClose }
               onChange={e => { if (e.target.files[0]) uploadDoc(e.target.files[0]) }}/>
           </label>
         </div>
+
+        {uploadError && (
+          <div className="flex items-center gap-2 text-red-400 text-xs px-4 py-2 bg-red-500/10 border-b border-slate-800">
+            <AlertTriangle size={13} className="flex-none"/> {uploadError}
+          </div>
+        )}
+
         {documents.length === 0
           ? <p className="text-center text-slate-600 py-10 text-sm">No documents uploaded</p>
-          : <ul>{documents.map((doc, i) => (
-              <li key={doc.id} className={`flex items-center justify-between px-4 py-3 ${i < documents.length - 1 ? 'border-b border-slate-800' : ''}`}>
-                <div className="flex items-center gap-2 flex-1 min-w-0">
-                  <Paperclip size={14} className="text-slate-400 flex-none"/>
-                  <button onClick={() => downloadDoc(doc)}
-                    className="text-slate-200 text-sm truncate text-left hover:text-indigo-400 transition-colors">
-                    {doc.name}
-                  </button>
-                </div>
-                <div className="flex items-center gap-3 flex-none">
-                  {doc.type && <span className="text-slate-600 text-xs">{doc.type}</span>}
-                  <button onClick={() => deleteDoc(doc)}>
-                    <Trash2 size={14} className="text-red-400"/>
-                  </button>
-                </div>
-              </li>
-            ))}</ul>
+          : <ul>{documents.map((doc, i) => {
+              const isPendingDelete = confirmDeleteDoc?.id === doc.id
+              return (
+                <li key={doc.id} className={`px-4 py-3 ${i < documents.length - 1 ? 'border-b border-slate-800' : ''}`}>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                      <Paperclip size={14} className="text-slate-400 flex-none"/>
+                      <button onClick={() => downloadDoc(doc)}
+                        className="text-slate-200 text-sm truncate text-left hover:text-indigo-400 transition-colors">
+                        {doc.name}
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-3 flex-none">
+                      {doc.type && <span className="text-slate-600 text-xs">{doc.type}</span>}
+                      <button
+                        onClick={() => setConfirmDeleteDoc(isPendingDelete ? null : doc)}
+                        aria-label={isPendingDelete ? 'Cancel delete' : `Delete ${doc.name}`}
+                        className={isPendingDelete ? 'text-slate-500' : 'text-red-400'}>
+                        <Trash2 size={14}/>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* In-UI confirm row — no native confirm() dialog */}
+                  {isPendingDelete && (
+                    <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-800">
+                      <p className="text-xs text-slate-400">Delete "{doc.name}"?</p>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => setConfirmDeleteDoc(null)}
+                          className="text-xs text-slate-500 font-semibold px-2 py-1">
+                          Cancel
+                        </button>
+                        <button
+                          onClick={confirmAndDeleteDoc}
+                          disabled={deleting}
+                          className="text-xs text-red-400 font-bold px-2 py-1 disabled:opacity-50">
+                          {deleting ? 'Deleting...' : 'Delete'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </li>
+              )
+            })}</ul>
         }
       </div>
     )
@@ -204,7 +256,6 @@ export default function CandidateDetail({ candidate: initialCandidate, onClose }
   return (
     <>
       <div className="fixed inset-0 z-50 bg-[#050D1A] flex flex-col">
-        {/* Header */}
         <div className="flex items-center justify-between px-4 py-4 border-b border-slate-800 bg-[#080F1E]">
           <div className="flex items-center gap-3 flex-1 min-w-0">
             <button onClick={onClose}><X size={20} className="text-slate-400"/></button>
@@ -212,26 +263,22 @@ export default function CandidateDetail({ candidate: initialCandidate, onClose }
           </div>
           <button
             onClick={() => setShowEdit(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold transition-colors flex-none"
-          >
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold transition-colors flex-none">
             <Edit2 size={13}/> Edit
           </button>
         </div>
 
         <div className="overflow-y-auto flex-1 px-4 py-5 flex flex-col gap-4">
-          {/* Info card */}
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col gap-2">
             <div className="flex items-start justify-between mb-1">
               <div className="w-14 h-14 rounded-2xl bg-emerald-500/15 flex items-center justify-center text-emerald-400 font-bold text-2xl">
                 {candidate.full_name?.[0]?.toUpperCase()}
               </div>
-              {/* Pipeline stage picker */}
               <div className="relative">
                 <button
                   onClick={() => setShowStageMenu(p => !p)}
                   disabled={updatingStage}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold ${stageColor(candidateStatus)}`}
-                >
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold ${stageColor(candidateStatus)}`}>
                   {stageLabel(candidateStatus)}
                   <ChevronDown size={12}/>
                 </button>
@@ -248,15 +295,15 @@ export default function CandidateDetail({ candidate: initialCandidate, onClose }
               </div>
             </div>
 
+            {stageError && (
+              <p className="text-red-400 text-xs bg-red-500/10 px-3 py-2 rounded-xl">{stageError}</p>
+            )}
+
             {candidate.phone && (
-              <div className="flex items-center gap-2 text-slate-400 text-sm">
-                <Phone size={14}/> {candidate.phone}
-              </div>
+              <div className="flex items-center gap-2 text-slate-400 text-sm"><Phone size={14}/> {candidate.phone}</div>
             )}
             {candidate.nationality && (
-              <div className="flex items-center gap-2 text-slate-400 text-sm">
-                <Globe size={14}/> {candidate.nationality}
-              </div>
+              <div className="flex items-center gap-2 text-slate-400 text-sm"><Globe size={14}/> {candidate.nationality}</div>
             )}
             {(candidate.date_of_birth || candidate.dob) && (
               <div className="flex items-center gap-2 text-slate-400 text-sm">
@@ -268,26 +315,22 @@ export default function CandidateDetail({ candidate: initialCandidate, onClose }
               <p className="text-slate-500 text-xs mt-1">{candidate.address}</p>
             )}
             {candidate.agents?.full_name && (
-              <p className="text-indigo-400 text-xs font-semibold mt-1">
-                Agent: {candidate.agents.full_name}
-              </p>
+              <p className="text-indigo-400 text-xs font-semibold mt-1">Agent: {candidate.agents.full_name}</p>
             )}
           </div>
 
-          {/* Tabs */}
           <div className="flex gap-2 overflow-x-auto scrollbar-hide">
             {['passports', 'invoices', 'documents'].map(t => (
               <button key={t} onClick={() => setTab(t)}
                 className={`px-4 py-2.5 rounded-xl text-sm font-bold capitalize whitespace-nowrap transition-colors ${tab === t ? 'bg-indigo-500 text-white' : 'bg-slate-800 text-slate-400'}`}>
                 {t}
-                {t === 'passports'  && passports.length  > 0 && ` (${passports.length})`}
-                {t === 'invoices'   && invoices.length   > 0 && ` (${invoices.length})`}
-                {t === 'documents'  && documents.length  > 0 && ` (${documents.length})`}
+                {t === 'passports' && passports.length > 0 && ` (${passports.length})`}
+                {t === 'invoices'  && invoices.length  > 0 && ` (${invoices.length})`}
+                {t === 'documents' && documents.length > 0 && ` (${documents.length})`}
               </button>
             ))}
           </div>
 
-          {/* Tab content */}
           {loading ? (
             <div className="flex justify-center py-12">
               <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"/>
@@ -298,7 +341,6 @@ export default function CandidateDetail({ candidate: initialCandidate, onClose }
         </div>
       </div>
 
-      {/* Edit Modal — renders on top */}
       {showEdit && (
         <EditCandidateModal
           candidate={candidate}
@@ -310,18 +352,17 @@ export default function CandidateDetail({ candidate: initialCandidate, onClose }
   )
 }
 
-// PropTypes
 CandidateDetail.propTypes = {
   candidate: PropTypes.shape({
-    id: PropTypes.string.isRequired,
-    full_name: PropTypes.string,
-    status: PropTypes.string,
-    phone: PropTypes.string,
-    nationality: PropTypes.string,
+    id:            PropTypes.string.isRequired,
+    full_name:     PropTypes.string,
+    status:        PropTypes.string,
+    phone:         PropTypes.string,
+    nationality:   PropTypes.string,
     date_of_birth: PropTypes.string,
-    dob: PropTypes.string,
-    address: PropTypes.string,
-    agents: PropTypes.shape({ full_name: PropTypes.string }),
+    dob:           PropTypes.string,
+    address:       PropTypes.string,
+    agents:        PropTypes.shape({ full_name: PropTypes.string }),
   }).isRequired,
   onClose: PropTypes.func.isRequired,
 }
