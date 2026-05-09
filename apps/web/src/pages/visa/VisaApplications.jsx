@@ -41,12 +41,22 @@ export default function VisaApplications() {
   useEffect(() => { fetchApps() }, [])
 
   async function fetchApps() {
-    const { data } = await supabase
-      .from('visa_applications')
-      .select('*, candidates(full_name), passports(passport_no)')
-      .order('created_at', { ascending: false })
-    setApps(data || [])
-    setLoading(false)
+    // FIX: Wrap in try/catch/finally so setLoading(false) is ALWAYS called,
+    // even when the query throws (network error, RLS error, Supabase cold start).
+    // Without this, any thrown exception left loading=true forever on refresh.
+    try {
+      const { data, error } = await supabase
+        .from('visa_applications')
+        .select('*, candidates(full_name), passports(passport_no)')
+        .order('created_at', { ascending: false })
+      if (error) throw error
+      setApps(data || [])
+    } catch (err) {
+      console.error('[VisaApplications] fetchApps failed:', err)
+      setApps([])
+    } finally {
+      setLoading(false)
+    }
   }
 
   function handleUpdated(newStatus) {
