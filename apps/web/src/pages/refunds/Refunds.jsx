@@ -41,7 +41,8 @@ function AddRefundModal({ onClose, onSaved }) {
       invoice_id: form.invoice_id || null,
     })
     if (err) { setError(err.message); setLoading(false); return }
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { session } } = await supabase.auth.getSession()
+    const user = session?.user
     await supabase.from('notifications').insert({
       user_id: user.id,
       title: 'Refund Created',
