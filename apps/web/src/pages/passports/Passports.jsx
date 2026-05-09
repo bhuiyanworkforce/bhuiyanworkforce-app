@@ -120,24 +120,28 @@ export default function Passports() {
     if (newOffset === 0) setLoading(true)
     else setLoadingMore(true)
 
-    const { rows, isSearchMode, total } = await fetchPassportsBySearch(
-      supabase, { searchTerm, status, from, to, newOffset }
-    )
+    try {
+      const { rows, isSearchMode, total } = await fetchPassportsBySearch(
+        supabase, { searchTerm, status, from, to, newOffset }
+      )
 
-    if (newOffset === 0) setPassports(rows)
-    else setPassports(prev => [...prev, ...rows])
+      if (newOffset === 0) setPassports(rows)
+      else setPassports(prev => [...prev, ...rows])
 
-    // FIX: In search mode we know the full merged total, so we can set
-    // hasMore accurately without relying on rows.length === PAGE_SIZE.
-    if (isSearchMode) {
-      setHasMore(newOffset + PAGE_SIZE < total)
-    } else {
-      setHasMore(rows.length === PAGE_SIZE)
+      if (isSearchMode) {
+        setHasMore(newOffset + PAGE_SIZE < total)
+      } else {
+        setHasMore(rows.length === PAGE_SIZE)
+      }
+
+      setOffset(newOffset)
+    } catch (err) {
+      console.error('[Passports] fetchPassports failed:', err)
+      if (newOffset === 0) setPassports([])
+    } finally {
+      setLoading(false)
+      setLoadingMore(false)
     }
-
-    setOffset(newOffset)
-    setLoading(false)
-    setLoadingMore(false)
   }, [])
 
   useEffect(() => {
