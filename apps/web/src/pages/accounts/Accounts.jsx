@@ -58,36 +58,68 @@ export default function Accounts() {
     }
   }, [location.state])
 
-  // Build the Supabase query with server-side search + filter applied
-  function buildQuery(currentSearch, currentFilter, newOffset) {
-    let query = supabase
-      .from('invoices')
-      .select('*, candidates(full_name)')
-      .order('issued_at', { ascending: false })
-      .range(newOffset, newOffset + PAGE_SIZE - 1)
+  // ─── BUG FIX: two-query merge for invoice search ─────────────────────────────
+  // PostgREST does not support filtering on a foreign-table column via a plain
+  // .or() string (e.g. "candidates.full_name.ilike.%x%") — it silently returns
+  // no results for the joined-column branch.
+  //
+  // Fix mirrors the pattern already applied in Passports.jsx:
+  //   - When there is no search term: single paginated query (fast path).
+  //   - When there IS a search term: two parallel queries (by invoice_no and by
+  //     candidate name), then merge + deduplicate client-side.
+  //
+  // Status and overdue filters are applied inside the base() builder so they
+  // work correctly for both branches.
+  // ─────────────────────────────────────────────────────────────────────────────
+  async function fetchInvoicesBySearch(currentSearch, currentFilter, newOffset) {
+    function base() {
+      let q = supabase
+        .from('invoices')
+        .select('*, candidates(full_name)')
+        .order('issued_at', { ascending: false })
 
-    // Server-side full-text search across invoice_no and candidate name
-    if (currentSearch.trim()) {
-      // Supabase supports ilike on joined columns via the foreign table syntax.
-      // We use an `or` filter across both fields.
-      query = query.or(
-        `invoice_no.ilike.%${currentSearch.trim()}%,candidates.full_name.ilike.%${currentSearch.trim()}%`
-      )
+      if (currentFilter === 'overdue') {
+        const today = new Date().toISOString().split('T')[0]
+        q = q.lt('due_date', today).not('status', 'in', '("paid","cancelled")')
+      } else if (currentFilter !== 'all') {
+        q = q.eq('status', currentFilter)
+      }
+      return q
     }
 
-    // Server-side status filter
-    // 'overdue' is a client-side concept (due_date < now && status != paid/cancelled),
-    // so we handle it via a date + status filter on the server.
-    if (currentFilter === 'overdue') {
-      const today = new Date().toISOString().split('T')[0]
-      query = query
-        .lt('due_date', today)
-        .not('status', 'in', '("paid","cancelled")')
-    } else if (currentFilter !== 'all') {
-      query = query.eq('status', currentFilter)
+    const term = currentSearch.trim()
+
+    if (!term) {
+      // No search — simple paginated query
+      const { data, error } = await base().range(newOffset, newOffset + PAGE_SIZE - 1)
+      if (error) throw error
+      return data || []
     }
 
-    return query
+    // Escape PostgREST ilike special characters
+    const safe = term.replace(/[%_\]/g, '\$&')
+
+    // Two parallel queries: by invoice_no OR by candidate name
+    const [byInvoiceNo, byCandidateName] = await Promise.all([
+      base().ilike('invoice_no', `%${safe}%`).limit(PAGE_SIZE),
+      base().ilike('candidates.full_name', `%${safe}%`).limit(PAGE_SIZE),
+    ])
+
+    if (byInvoiceNo.error) throw byInvoiceNo.error
+    if (byCandidateName.error) throw byCandidateName.error
+
+    // Merge and deduplicate by invoice id
+    const seen = new Set()
+    const merged = []
+    for (const inv of [...(byInvoiceNo.data || []), ...(byCandidateName.data || [])]) {
+      if (!seen.has(inv.id)) {
+        seen.add(inv.id)
+        merged.push(inv)
+      }
+    }
+
+    // Apply pagination on the merged result
+    return merged.slice(newOffset, newOffset + PAGE_SIZE)
   }
 
   const fetchInvoices = useCallback(async (newOffset = 0, currentSearch = search, currentFilter = filter) => {
@@ -96,10 +128,7 @@ export default function Accounts() {
     setError(null)
 
     try {
-      const { data, error: err } = await buildQuery(currentSearch, currentFilter, newOffset)
-      if (err) throw err
-
-      const results = data || []
+      const results = await fetchInvoicesBySearch(currentSearch, currentFilter, newOffset)
 
       if (newOffset === 0) {
         setInvoices(results)
