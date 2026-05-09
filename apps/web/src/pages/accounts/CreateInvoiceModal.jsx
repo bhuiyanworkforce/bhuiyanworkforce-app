@@ -59,8 +59,12 @@ export default function CreateInvoiceModal({ onClose, onSaved }) {
       setError('Please fill all item fields'); return
     }
     setSaving(true)
-    const { data: { user } } = await supabase.auth.getUser()
-    const invoiceNo = 'INV-' + Date.now().toString().slice(-6)
+    const { data: { session } } = await supabase.auth.getSession()
+    const user = session?.user
+    // Use a UUID fragment instead of Date.now() so that two invoices
+    // created in the same millisecond (e.g. two browser tabs) never
+    // generate the same invoice_no.
+    const invoiceNo = 'INV-' + crypto.randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase()
 
     const { data: invoice, error: invErr } = await supabase
       .from('invoices')
