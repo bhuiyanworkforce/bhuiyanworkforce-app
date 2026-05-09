@@ -4,6 +4,10 @@ import {
   BarChart2, Download, TrendingUp, Users,
   Stamp, Wallet, FileText, Calendar, X, DollarSign, RefreshCw
 } from 'lucide-react'
+import {
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
+  Cell, PieChart, Pie, Legend,
+} from 'recharts'
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 
@@ -312,14 +316,6 @@ export default function Reports() {
 
   async function exportFullBackup() { await runFullBackup(supabase) }
 
-  const maxRevenue = Math.max(...data.revenue.map(r => r.amount), 1)
-  const maxPassport = Math.max(...data.passportsByStatus.map(p => p.count), 1)
-  const STATUS_COLORS = {
-    received: 'bg-blue-400', interview: 'bg-yellow-400', medical: 'bg-orange-400',
-    police_clearance: 'bg-purple-400', bmet: 'bg-cyan-400', calling_list: 'bg-pink-400',
-    visa_stamping: 'bg-indigo-400', mofa: 'bg-violet-400', traveling: 'bg-emerald-400',
-    returned: 'bg-slate-400', cancelled: 'bg-red-400',
-  }
   const totalProfit = profitData.reduce((s, c) => s + c.profit, 0)
   const customLabel = period === 'custom' && (customFrom || customTo) ? `${customFrom || '…'} → ${customTo || 'today'}` : null
 
@@ -425,38 +421,84 @@ export default function Reports() {
                   <h2 className="text-sm font-bold text-slate-300">Revenue by Month</h2>
                   <span className="text-indigo-400 text-xs font-bold">৳{data.totalRevenue.toLocaleString()}</span>
                 </div>
-                <div className="p-5">
-                  <div className="flex items-end gap-2 h-32">
-                    {data.revenue.map(({ month, amount }) => (
-                      <div key={month} className="flex-1 flex flex-col items-center gap-1">
-                        <span className="text-slate-500 text-[9px] font-bold">৳{amount >= 1000 ? (amount/1000).toFixed(0)+'k' : amount}</span>
-                        <div className="w-full bg-gradient-to-t from-indigo-500 to-violet-500 rounded-t-lg transition-all duration-500 min-h-[4px]" style={{ height: `${(amount/maxRevenue)*100}%` }}/>
-                        <span className="text-slate-600 text-[9px]">{month}</span>
-                      </div>
-                    ))}
-                  </div>
+                <div className="px-2 pt-4 pb-2">
+                  <ResponsiveContainer width="100%" height={160}>
+                    <BarChart data={data.revenue} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
+                      <XAxis
+                        dataKey="month"
+                        tick={{ fill: '#64748b', fontSize: 10, fontWeight: 600 }}
+                        axisLine={false} tickLine={false}
+                      />
+                      <YAxis
+                        tick={{ fill: '#475569', fontSize: 9 }}
+                        axisLine={false} tickLine={false}
+                        tickFormatter={v => v >= 1000 ? (v/1000).toFixed(0)+'k' : v}
+                      />
+                      <Tooltip
+                        cursor={{ fill: 'rgba(99,102,241,0.08)' }}
+                        contentStyle={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 12, fontSize: 12 }}
+                        labelStyle={{ color: '#94a3b8', fontWeight: 700 }}
+                        formatter={v => ['৳' + v.toLocaleString(), 'Revenue']}
+                      />
+                      <Bar dataKey="amount" radius={[6, 6, 0, 0]} maxBarSize={40}>
+                        {data.revenue.map((_, i) => (
+                          <Cell key={i} fill="url(#revenueGrad)" />
+                        ))}
+                      </Bar>
+                      <defs>
+                        <linearGradient id="revenueGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#7c3aed" />
+                          <stop offset="100%" stopColor="#6366f1" />
+                        </linearGradient>
+                      </defs>
+                    </BarChart>
+                  </ResponsiveContainer>
                 </div>
               </div>
             )}
 
-            {data.passportsByStatus.length > 0 && (
-              <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
-                <div className="px-5 py-4 border-b border-slate-800"><h2 className="text-sm font-bold text-slate-300">Passport Status Breakdown</h2></div>
-                <div className="p-5 flex flex-col gap-3">
-                  {data.passportsByStatus.map(({ status, count }) => (
-                    <div key={status}>
-                      <div className="flex justify-between mb-1.5">
-                        <span className="text-slate-300 text-xs font-medium capitalize">{status.replaceAll('_',' ')}</span>
-                        <span className="text-slate-400 text-xs font-bold">{count}</span>
-                      </div>
-                      <div className="h-2 bg-slate-800 rounded-full overflow-hidden">
-                        <div className={`h-full rounded-full ${STATUS_COLORS[status]||'bg-slate-400'} transition-all duration-700`} style={{ width: `${(count/maxPassport)*100}%` }}/>
-                      </div>
-                    </div>
-                  ))}
+            {data.passportsByStatus.length > 0 && (() => {
+              const STATUS_HEX = {
+                received: '#60a5fa', interview: '#facc15', medical: '#fb923c',
+                police_clearance: '#c084fc', bmet: '#22d3ee', calling_list: '#f472b6',
+                visa_stamping: '#818cf8', mofa: '#a78bfa', traveling: '#34d399',
+                returned: '#94a3b8', cancelled: '#f87171',
+              }
+              return (
+                <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
+                  <div className="px-5 py-4 border-b border-slate-800">
+                    <h2 className="text-sm font-bold text-slate-300">Passport Status Breakdown</h2>
+                  </div>
+                  <div className="flex flex-col items-center py-2">
+                    <ResponsiveContainer width="100%" height={200}>
+                      <PieChart>
+                        <Pie
+                          data={data.passportsByStatus}
+                          dataKey="count"
+                          nameKey="status"
+                          cx="50%" cy="50%"
+                          innerRadius={52} outerRadius={80}
+                          paddingAngle={2}
+                        >
+                          {data.passportsByStatus.map(({ status }) => (
+                            <Cell key={status} fill={STATUS_HEX[status] ?? '#64748b'} />
+                          ))}
+                        </Pie>
+                        <Tooltip
+                          contentStyle={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 12, fontSize: 12 }}
+                          labelStyle={{ color: '#94a3b8' }}
+                          formatter={(v, name) => [v, name.replaceAll('_', ' ')]}
+                        />
+                        <Legend
+                          formatter={name => <span style={{ color: '#94a3b8', fontSize: 11, textTransform: 'capitalize' }}>{name.replaceAll('_', ' ')}</span>}
+                          iconType="circle" iconSize={8}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
                 </div>
-              </div>
-            )}
+              )
+            })()}
 
             {data.agentPerformance.length > 0 && (
               <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
