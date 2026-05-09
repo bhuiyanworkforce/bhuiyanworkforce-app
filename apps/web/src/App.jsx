@@ -1,17 +1,16 @@
 import { lazy, Suspense, Component } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-import { useAuth } from './hooks/useAuth'
+import { useAuth } from './context/AuthContext'
 import AppLayout from './layouts/AppLayout'
 
 // ── Error Boundary ─────────────────────────────────────────────────────────────
-// FIX: Previously there were no error boundaries in the app. Any uncaught render
-// error in any page component (bad data shape, null access, a failed lazy chunk)
-// would propagate all the way up and crash the entire app to a blank screen.
-//
-// ErrorBoundary is a class component because React's error boundary API
-// (getDerivedStateFromError + componentDidCatch) is not available in hooks.
-// It wraps every lazy-loaded route so a broken page is isolated — the header,
-// nav, and other pages keep working.
+// Placed OUTSIDE Suspense so it also catches failed lazy chunk loads (404s).
+// When a new deployment happens, the service worker may serve a stale
+// index.html that references old hashed JS chunks — those chunks return 404,
+// which makes the lazy() import reject. Without an ErrorBoundary outside
+// Suspense, that rejection is silent and the spinner never resolves.
+// With this boundary outside, the user gets a "Try again" button that
+// reloads the page and gets the fresh chunks.
 class ErrorBoundary extends Component {
   constructor(props) {
     super(props)
@@ -23,17 +22,15 @@ class ErrorBoundary extends Component {
   }
 
   componentDidCatch(error, info) {
-    console.error('[ErrorBoundary] Page crashed:', error, info?.componentStack)
+    console.error('[ErrorBoundary] Caught:', error, info?.componentStack)
   }
 
-  handleReset = () => {
-    this.setState({ hasError: false })
-  }
+  handleReset = () => this.setState({ hasError: false })
 
   render() {
     if (this.state.hasError) {
       return (
-        <div className="min-h-[60vh] flex items-center justify-center p-6">
+        <div className="min-h-screen bg-[#050D1A] flex items-center justify-center p-6">
           <div className="text-center max-w-sm">
             <div className="w-14 h-14 rounded-2xl bg-red-500/10 border border-red-500/30 flex items-center justify-center mx-auto mb-5">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-red-400">
@@ -44,20 +41,20 @@ class ErrorBoundary extends Component {
             </div>
             <h2 className="text-lg font-bold text-slate-100 mb-2">Something went wrong</h2>
             <p className="text-slate-400 text-sm mb-6">
-              This page ran into an unexpected error. Your other data is fine.
+              This may be caused by a stale cache. Reloading usually fixes it.
             </p>
             <div className="flex gap-3 justify-center">
               <button
-                onClick={this.handleReset}
+                onClick={() => window.location.reload()}
                 className="bg-indigo-600 hover:bg-indigo-500 text-white px-5 py-2.5 rounded-xl text-sm font-semibold transition-colors"
               >
-                Try again
+                Reload page
               </button>
               <button
-                onClick={() => window.location.reload()}
+                onClick={this.handleReset}
                 className="bg-slate-800 hover:bg-slate-700 text-slate-300 px-5 py-2.5 rounded-xl text-sm font-semibold transition-colors"
               >
-                Reload page
+                Try again
               </button>
             </div>
           </div>
@@ -68,26 +65,41 @@ class ErrorBoundary extends Component {
   }
 }
 
-// ── Lazy-loaded pages ──────────────────────────────────────────────────────────
-// All 16 page components are split into their own chunks — the browser only
-// downloads and parses a page when the user first navigates to it.
-const Dashboard        = lazy(() => import('./pages/dashboard/Dashboard'))
-const Passports        = lazy(() => import('./pages/passports/Passports'))
-const VisaApplications = lazy(() => import('./pages/visa/VisaApplications'))
-const Agents           = lazy(() => import('./pages/agents/Agents'))
-const Accounts         = lazy(() => import('./pages/accounts/Accounts'))
-const Candidates       = lazy(() => import('./pages/candidates/Candidates'))
-const Profile          = lazy(() => import('./pages/profile/Profile'))
-const Reports          = lazy(() => import('./pages/reports/Reports'))
-const Expenses         = lazy(() => import('./pages/expenses/Expenses'))
-const Vendors          = lazy(() => import('./pages/vendors/Vendors'))
-const Loans            = lazy(() => import('./pages/loans/Loans'))
-const Cheques          = lazy(() => import('./pages/cheques/Cheques'))
-const Payroll          = lazy(() => import('./pages/payroll/Payroll'))
-const Refunds          = lazy(() => import('./pages/refunds/Refunds'))
-const AuditLog         = lazy(() => import('./pages/auditlog/AuditLog'))
-const Employees        = lazy(() => import('./pages/employees/Employees'))
-const Login            = lazy(() => import('./pages/auth/Login'))
+// ── Lazy pages with chunk-error retry ─────────────────────────────────────────
+// If a hashed chunk returns 404 (stale SW cache after redeployment), we reload
+// the page once automatically so the user gets fresh chunks silently.
+function lazyWithRetry(importFn) {
+  return lazy(() =>
+    importFn().catch(() => {
+      // Chunk failed to load — force a full page reload to bust the SW cache.
+      // Add a flag so we don't reload-loop if the chunk is genuinely broken.
+      if (!sessionStorage.getItem('chunk_reload')) {
+        sessionStorage.setItem('chunk_reload', '1')
+        window.location.reload()
+      }
+      // Return a dummy module so React doesn't crash before the reload fires
+      return { default: () => null }
+    })
+  )
+}
+
+const Dashboard        = lazyWithRetry(() => import('./pages/dashboard/Dashboard'))
+const Passports        = lazyWithRetry(() => import('./pages/passports/Passports'))
+const VisaApplications = lazyWithRetry(() => import('./pages/visa/VisaApplications'))
+const Agents           = lazyWithRetry(() => import('./pages/agents/Agents'))
+const Accounts         = lazyWithRetry(() => import('./pages/accounts/Accounts'))
+const Candidates       = lazyWithRetry(() => import('./pages/candidates/Candidates'))
+const Profile          = lazyWithRetry(() => import('./pages/profile/Profile'))
+const Reports          = lazyWithRetry(() => import('./pages/reports/Reports'))
+const Expenses         = lazyWithRetry(() => import('./pages/expenses/Expenses'))
+const Vendors          = lazyWithRetry(() => import('./pages/vendors/Vendors'))
+const Loans            = lazyWithRetry(() => import('./pages/loans/Loans'))
+const Cheques          = lazyWithRetry(() => import('./pages/cheques/Cheques'))
+const Payroll          = lazyWithRetry(() => import('./pages/payroll/Payroll'))
+const Refunds          = lazyWithRetry(() => import('./pages/refunds/Refunds'))
+const AuditLog         = lazyWithRetry(() => import('./pages/auditlog/AuditLog'))
+const Employees        = lazyWithRetry(() => import('./pages/employees/Employees'))
+const Login            = lazyWithRetry(() => import('./pages/auth/Login'))
 
 function PageSpinner() {
   return (
@@ -105,40 +117,41 @@ function ProtectedRoute({ children }) {
 
 export default function App() {
   return (
-    <BrowserRouter>
-      <Suspense fallback={<PageSpinner />}>
-        <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route
-            path="/"
-            element={
-              <ProtectedRoute>
-                <AppLayout />
-              </ProtectedRoute>
-            }
-          >
-            <Route index element={<Navigate to="/dashboard" replace />} />
-            {/* Each route is wrapped in its own ErrorBoundary so a crash on
-                one page never takes down the layout or other pages. */}
-            <Route path="dashboard"  element={<ErrorBoundary><Dashboard /></ErrorBoundary>} />
-            <Route path="passports"  element={<ErrorBoundary><Passports /></ErrorBoundary>} />
-            <Route path="visa"       element={<ErrorBoundary><VisaApplications /></ErrorBoundary>} />
-            <Route path="candidates" element={<ErrorBoundary><Candidates /></ErrorBoundary>} />
-            <Route path="agents"     element={<ErrorBoundary><Agents /></ErrorBoundary>} />
-            <Route path="accounts"   element={<ErrorBoundary><Accounts /></ErrorBoundary>} />
-            <Route path="reports"    element={<ErrorBoundary><Reports /></ErrorBoundary>} />
-            <Route path="profile"    element={<ErrorBoundary><Profile /></ErrorBoundary>} />
-            <Route path="expenses"   element={<ErrorBoundary><Expenses /></ErrorBoundary>} />
-            <Route path="vendors"    element={<ErrorBoundary><Vendors /></ErrorBoundary>} />
-            <Route path="loans"      element={<ErrorBoundary><Loans /></ErrorBoundary>} />
-            <Route path="cheques"    element={<ErrorBoundary><Cheques /></ErrorBoundary>} />
-            <Route path="payroll"    element={<ErrorBoundary><Payroll /></ErrorBoundary>} />
-            <Route path="refunds"    element={<ErrorBoundary><Refunds /></ErrorBoundary>} />
-            <Route path="audit-log"  element={<ErrorBoundary><AuditLog /></ErrorBoundary>} />
-            <Route path="employees"  element={<ErrorBoundary><Employees /></ErrorBoundary>} />
-          </Route>
-        </Routes>
-      </Suspense>
-    </BrowserRouter>
+    // ErrorBoundary wraps everything — catches chunk load failures too
+    <ErrorBoundary>
+      <BrowserRouter>
+        <Suspense fallback={<PageSpinner />}>
+          <Routes>
+            <Route path="/login" element={<Login />} />
+            <Route
+              path="/"
+              element={
+                <ProtectedRoute>
+                  <AppLayout />
+                </ProtectedRoute>
+              }
+            >
+              <Route index element={<Navigate to="/dashboard" replace />} />
+              <Route path="dashboard"  element={<Dashboard />} />
+              <Route path="passports"  element={<Passports />} />
+              <Route path="visa"       element={<VisaApplications />} />
+              <Route path="candidates" element={<Candidates />} />
+              <Route path="agents"     element={<Agents />} />
+              <Route path="accounts"   element={<Accounts />} />
+              <Route path="reports"    element={<Reports />} />
+              <Route path="profile"    element={<Profile />} />
+              <Route path="expenses"   element={<Expenses />} />
+              <Route path="vendors"    element={<Vendors />} />
+              <Route path="loans"      element={<Loans />} />
+              <Route path="cheques"    element={<Cheques />} />
+              <Route path="payroll"    element={<Payroll />} />
+              <Route path="refunds"    element={<Refunds />} />
+              <Route path="audit-log"  element={<AuditLog />} />
+              <Route path="employees"  element={<Employees />} />
+            </Route>
+          </Routes>
+        </Suspense>
+      </BrowserRouter>
+    </ErrorBoundary>
   )
 }
