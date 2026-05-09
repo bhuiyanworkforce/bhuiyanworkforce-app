@@ -91,7 +91,7 @@ function AddAgentPayrollModal({ onClose, onSaved }) {
           {[["Base Amount (৳) *","base_amount"],["Commission (৳)","commission_amount"],["Allowance (৳)","allowance"],["Overtime (৳)","overtime"],["Bonus (৳)","bonus"],["Deductions (৳)","deductions"]].map(([label, field]) => (
             <label key={field} className="flex flex-col gap-1">
               <span className="text-xs text-slate-500 font-semibold">{label}</span>
-              <input type="number" value={form[field]} onChange={e => set(field, e.target.value)}
+              <input type="number" min="0" value={form[field]} onChange={e => set(field, e.target.value)}
                 className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500"/>
             </label>
           ))}
@@ -318,7 +318,7 @@ function AddEmployeePayrollModal({ onClose, onSaved }) {
           {[["Basic Salary (৳) *","basic_salary"],["Bonus (৳)","bonus"],["Deduction (৳)","deduction"]].map(([label, field]) => (
             <label key={field} className="flex flex-col gap-1">
               <span className="text-xs text-slate-500 font-semibold">{label}</span>
-              <input type="number" value={form[field]} onChange={e => set(field, e.target.value)}
+              <input type="number" min="0" value={form[field]} onChange={e => set(field, e.target.value)}
                 className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500"/>
             </label>
           ))}
