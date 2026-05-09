@@ -2,21 +2,11 @@ import PropTypes from 'prop-types'
 import { useState, useEffect } from "react";
 import { supabase } from "../../lib/supabase";
 import { Plus, X } from "lucide-react";
+import { calcAgentNet, calcEmpNet } from "../../lib/utils";
 
 // ─── AGENT PAYROLL ────────────────────────────────────────────────────────────
-
-// FIX: Extract net-amount calculation to a single pure function so the DB
-// insert and the live preview always use the same formula — previously the
-// formula was written twice and could drift if one copy was changed.
-function calcAgentNet({ base_amount, commission_amount, allowance, overtime, bonus, deductions }) {
-  return (Number(base_amount) || 0) + (Number(commission_amount) || 0) +
-    (Number(allowance) || 0) + (Number(overtime) || 0) +
-    (Number(bonus) || 0) - (Number(deductions) || 0)
-}
-
-function calcEmpNet({ basic_salary, bonus, deduction }) {
-  return (Number(basic_salary) || 0) + (Number(bonus) || 0) - (Number(deduction) || 0)
-}
+// calcAgentNet and calcEmpNet are now in src/lib/utils.js — single source of
+// truth shared between the DB insert and the live preview.
 
 function AddAgentPayrollModal({ onClose, onSaved }) {
   const [agents, setAgents] = useState([]);
