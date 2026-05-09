@@ -19,7 +19,7 @@ function timeAgo(dateStr) {
   return `${Math.floor(hrs / 24)}d ago`
 }
 
-function subscribeToNotifications(userId, onInsert) {
+function subscribeToNotifications(userId, onInsert, onError) {
   return supabase
     .channel(`notifications:${userId}`)
     .on('postgres_changes', {
@@ -30,7 +30,15 @@ function subscribeToNotifications(userId, onInsert) {
     }, (payload) => {
       onInsert(payload.new)
     })
-    .subscribe()
+    // FIX: Handle Realtime channel errors. Without this callback a network drop
+    // or Realtime quota failure is silent — the bell stops updating with no
+    // feedback to the user.
+    .subscribe((status, err) => {
+      if (status === 'CHANNEL_ERROR') {
+        console.error('Notification channel error:', err)
+        onError('Live updates unavailable. Refresh to reconnect.')
+      }
+    })
 }
 
 export default function NotificationBell() {
@@ -64,6 +72,8 @@ export default function NotificationBell() {
 
       channel = subscribeToNotifications(user.id, (newNotification) => {
         setNotifications(prev => [newNotification, ...prev])
+      }, (errMsg) => {
+        setFetchError(errMsg)
       })
     }
 
