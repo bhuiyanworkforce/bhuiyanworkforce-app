@@ -53,7 +53,7 @@ function AddChequeModal({ onClose, onSaved }) {
           </label>
           <label className="flex flex-col gap-1">
             <span className="text-xs text-slate-500 font-semibold">Amount (৳) *</span>
-            <input type="number" value={form.amount} onChange={e=>set('amount',e.target.value)} placeholder="0" className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500"/>
+            <input type="number" min="0" value={form.amount} onChange={e=>set('amount',e.target.value)} placeholder="0" className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500"/>
           </label>
           <div className="grid grid-cols-2 gap-3">
             <label className="flex flex-col gap-1">
