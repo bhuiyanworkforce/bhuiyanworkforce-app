@@ -51,7 +51,7 @@ export function AuthProvider({ children }) {
     const authTimeout = setTimeout(() => {
       console.warn('[Auth] Loading timed out — unblocking app')
       finishLoading()
-    }, 8000)
+    }, 15000)
 
     // ── Safety net 2: getSession() fallback ────────────────────────────────
     // If the service worker serves a stale page, onAuthStateChange may never
