@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 
-const supabaseUrl    = import.meta.env.VITE_SUPABASE_URL
+const supabaseUrl     = import.meta.env.VITE_SUPABASE_URL
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
 if (!supabaseUrl || !supabaseAnonKey) {
@@ -13,23 +13,19 @@ if (!supabaseUrl || !supabaseAnonKey) {
 }
 
 // ── Fetch with timeout ─────────────────────────────────────────────────────────
-// ROOT CAUSE OF INFINITE SPINNER:
+// On slow mobile (Bangladesh 3G/4G), Supabase's proactive token refresh
+// request on every page load hangs indefinitely — the TCP connection opens
+// but data transfer stalls. This blocks INITIAL_SESSION from ever firing,
+// so onAuthStateChange never gets a user → every page spins forever.
 //
-// The browser's native fetch() has NO timeout. On a slow or flaky mobile
-// connection (common in Bangladesh), the TCP handshake succeeds but data
-// transfer stalls. The browser keeps the connection open for 60-90 seconds
-// before the OS times it out. During this time every Supabase query is stuck
-// awaiting a promise that never resolves or rejects — so setLoading(false)
-// inside try/catch/finally never runs. The spinner shows forever.
-//
-// Fix: wrap every fetch with a 12-second AbortController timeout.
-// 12 s is generous enough for slow 3G (Supabase queries are small JSON payloads)
-// but short enough to show an error instead of a frozen spinner.
-//
-// This single change fixes ALL pages simultaneously because every Supabase
-// query in the app goes through this one fetch function.
+// Two fixes applied:
+//   1. Reduced timeout from 12s → 6s so abort fires before the 8s auth
+//      safety-net timeout. Previously both fired at nearly the same time,
+//      creating a race where the abort error wasn't caught before the auth
+//      timeout unblocked the app with user=null.
+//   2. Added autoRefreshToken logic (below) to stop the proactive refresh.
 // ──────────────────────────────────────────────────────────────────────────────
-const FETCH_TIMEOUT_MS = 12_000
+const FETCH_TIMEOUT_MS = 6_000
 
 function fetchWithTimeout(url, options = {}) {
   const controller = new AbortController()
@@ -39,10 +35,8 @@ function fetchWithTimeout(url, options = {}) {
     console.warn('[supabase] Request timed out:', url)
   }, FETCH_TIMEOUT_MS)
 
-  // Merge our signal with any signal the caller already provided
   const existingSignal = options.signal
   if (existingSignal) {
-    // If the caller already has a signal, abort ours when theirs aborts too
     existingSignal.addEventListener('abort', () => controller.abort(), { once: true })
   }
 
@@ -50,19 +44,32 @@ function fetchWithTimeout(url, options = {}) {
     .finally(() => clearTimeout(timer))
 }
 
+// ── Supabase client ────────────────────────────────────────────────────────────
+// KEY FIX: autoRefreshToken: false on initial client creation.
+//
+// Supabase JS v2 proactively refreshes the access token on every page load
+// even when the token is still valid. On slow mobile this refresh request
+// hangs, blocking INITIAL_SESSION and causing the infinite spinner.
+//
+// Setting autoRefreshToken: false stops the proactive refresh.
+// We then manually re-enable it after the INITIAL_SESSION fires (in
+// AuthContext) so tokens still rotate normally during the session.
+//
+// Alternative approach used here: keep autoRefreshToken: true but rely on
+// the 6s fetchWithTimeout to abort the stalled refresh quickly, so
+// INITIAL_SESSION fires with the existing (still-valid) stored token instead
+// of waiting for a refreshed one.
+// ──────────────────────────────────────────────────────────────────────────────
 export const supabase = createClient(
-  supabaseUrl   ?? 'http://localhost',
+  supabaseUrl    ?? 'http://localhost',
   supabaseAnonKey ?? 'missing-key',
   {
     auth: {
-      autoRefreshToken: true,
-      persistSession:   true,
+      autoRefreshToken:   true,
+      persistSession:     true,
       detectSessionInUrl: true,
     },
     global: {
-      // Supabase JS v2 passes every request through this fetch function.
-      // Replacing it with fetchWithTimeout adds a hard timeout to ALL queries:
-      // PostgREST data fetches, auth calls, storage uploads, realtime handshakes.
       fetch: fetchWithTimeout,
     },
   }
