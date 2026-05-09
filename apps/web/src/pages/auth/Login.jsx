@@ -24,11 +24,13 @@ export default function Login() {
       <div className="w-full max-w-sm">
         {/* Logo */}
         <div className="flex flex-col items-center mb-10">
-          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white font-bold text-2xl mb-4 shadow-lg shadow-indigo-500/30">
-            A
-          </div>
-          <h1 className="text-2xl font-extrabold text-slate-100">Bhuiyan Workforce</h1>
-          <p className="text-slate-500 text-sm mt-1">Bhuiyan Workforce Management</p>
+          <img
+            src="/icon-192x192.png"
+            alt="Bhuiyan Workforce"
+            className="w-16 h-16 rounded-2xl mb-4 shadow-lg shadow-indigo-500/30"
+          />
+          <h1 className="text-2xl font-extrabold text-slate-100">Bhuiyan Books</h1>
+          <p className="text-slate-500 text-sm mt-1">Bhuiyan Workforce Ltd.</p>
         </div>
 
         {/* Form */}
@@ -78,7 +80,7 @@ export default function Login() {
           </form>
         </div>
         <p className="text-center text-slate-600 text-xs mt-6">
-          Bhuiyan Workforce © 2026
+          Bhuiyan Books © 2026
         </p>
       </div>
     </div>
