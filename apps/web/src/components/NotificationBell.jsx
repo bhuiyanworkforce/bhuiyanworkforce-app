@@ -48,8 +48,17 @@ export default function NotificationBell() {
     let channel
 
     async function init() {
-      const { data: { user } } = await supabase.auth.getUser()
+      // FIX: Previously called supabase.auth.getUser() here, which validates the
+      // JWT against Supabase's server on every mount — an unnecessary network
+      // round-trip just to get the user ID for a UI component.
+      //
+      // getSession() reads the session from local storage synchronously (no
+      // network request). Use getUser() only when you need server-side token
+      // validation before a write or a privileged operation.
+      const { data: { session } } = await supabase.auth.getSession()
+      const user = session?.user
       if (!user) return
+
       setUserId(user.id)
       await fetchNotificationsForUser(user.id)
 
@@ -76,9 +85,6 @@ export default function NotificationBell() {
     return () => document.removeEventListener('mousedown', handleClick)
   }, [])
 
-  // FIX: Previously discarded the error from Supabase, silently showing an
-  // empty list on failure. Now surfaces the error so the user knows something
-  // went wrong instead of thinking there are no notifications.
   async function fetchNotificationsForUser(uid) {
     setFetchError(null)
     const { data, error } = await supabase
@@ -170,7 +176,6 @@ export default function NotificationBell() {
           </div>
 
           <div className="overflow-y-auto flex-1">
-            {/* FIX: Show error state when fetch failed */}
             {fetchError ? (
               <div className="flex flex-col items-center justify-center py-10 gap-3 text-center px-4">
                 <AlertTriangle size={24} className="text-red-400" />
