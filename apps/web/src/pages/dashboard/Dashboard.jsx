@@ -20,12 +20,17 @@ const WORKFLOW_STAGES = [
   { key: 'returned',        label: 'Returned',         color: 'bg-slate-400' },
 ]
 
-// FIX L86-L91: Replace all bare parseFloat() with Number.parseFloat()
-// FIX L228: Replace new Date() with Date.now() where appropriate
-// FIX L287: Replace String#replace() with String#replaceAll()
-
 function safeFloat(value) {
   return Number.parseFloat(value || 0)
+}
+
+// FIX: Helper to safely unwrap a Promise.allSettled result.
+// Returns the value on fulfillment, or the fallback on rejection.
+// This lets one failing query degrade gracefully instead of taking
+// down the entire dashboard (previously Promise.all would throw on
+// the first failure and show a full-page error).
+function settled(result, fallback) {
+  return result.status === 'fulfilled' ? result.value : fallback
 }
 
 export default function Dashboard() {
@@ -49,24 +54,15 @@ export default function Dashboard() {
   async function fetchAll() {
     setError(null)
     try {
-      // FIX L228: Use Date.now() instead of new Date() for timestamp comparisons
       const nowMs = Date.now()
       const now = new Date(nowMs)
       const in90days = new Date(nowMs)
       in90days.setDate(in90days.getDate() + 90)
 
-      const [
-        { count: totalPassports },
-        { count: activeVisa },
-        { count: totalCandidates },
-        { count: totalAgents },
-        { data: passportData },
-        { data: expiring },
-        { data: invoiceData },
-        { data: recentLogs },
-        { data: chequesData },
-        { data: monthExpenses },
-      ] = await Promise.all([
+      // FIX: Switched from Promise.all to Promise.allSettled so that one
+      // failing query (e.g. cheques, expenses) shows the rest of the
+      // dashboard with partial data instead of a full-page error.
+      const results = await Promise.allSettled([
         supabase.from('passports').select('*', { count: 'exact', head: true }),
         supabase.from('visa_applications').select('*', { count: 'exact', head: true })
           .not('status', 'in', '("approved","rejected","cancelled")'),
@@ -87,13 +83,27 @@ export default function Dashboard() {
           new Date(new Date(nowMs).getFullYear(), new Date(nowMs).getMonth(), 1).toISOString().split('T')[0]),
       ])
 
+      const [
+        r0, r1, r2, r3, r4, r5, r6, r7, r8, r9,
+      ] = results
+
+      const totalPassports  = settled(r0, { count: 0 }).count
+      const activeVisa      = settled(r1, { count: 0 }).count
+      const totalCandidates = settled(r2, { count: 0 }).count
+      const totalAgents     = settled(r3, { count: 0 }).count
+      const passportData    = settled(r4, { data: [] }).data
+      const expiring        = settled(r5, { data: [] }).data
+      const invoiceData     = settled(r6, { data: [] }).data
+      const recentLogs      = settled(r7, { data: [] }).data
+      const chequesData     = settled(r8, { data: [] }).data
+      const monthExpenses   = settled(r9, { data: [] }).data
+
       const counts = {}
       passportData?.forEach(p => { counts[p.status] = (counts[p.status] || 0) + 1 })
       setWorkflowCounts(
         WORKFLOW_STAGES.map(s => ({ ...s, count: counts[s.key] || 0 })).filter(s => s.count > 0)
       )
 
-      // FIX L86-L91: Use Number.parseFloat() via safeFloat() helper
       const paid = invoiceData?.filter(i => i.status === 'paid').reduce((s, i) => s + safeFloat(i.total), 0) || 0
       const unpaid = invoiceData?.filter(i => i.status === 'unpaid').reduce((s, i) => s + safeFloat(i.total), 0) || 0
       const overdueInvs = invoiceData?.filter(i => i.due_date && i.status !== 'paid' && i.status !== 'cancelled' && new Date(i.due_date) < new Date(nowMs)) || []
@@ -237,7 +247,6 @@ export default function Dashboard() {
           </div>
           <ul>
             {expiringPassports.map((p, i) => {
-              // FIX L228: Use Date.now() instead of new Date() for the timestamp
               const daysLeft = Math.ceil((new Date(p.expiry_date) - Date.now()) / (1000 * 60 * 60 * 24))
               return (
                 <li key={p.passport_no}
@@ -297,7 +306,6 @@ export default function Dashboard() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-slate-200 text-xs font-semibold truncate">{log.passports?.candidates?.full_name}</p>
-                  {/* FIX L287: Use replaceAll() instead of replace() with regex */}
                   <p className="text-slate-500 text-xs capitalize">Moved to <span className="text-indigo-400 font-semibold">{log.to_status?.replaceAll('_', ' ')}</span></p>
                   <p className="text-slate-600 text-[10px] mt-0.5">by {log.profiles?.full_name} · {new Date(log.changed_at).toLocaleDateString()}</p>
                 </div>
