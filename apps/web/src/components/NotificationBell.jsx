@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { Bell, Check, CheckCheck, X, AlertTriangle } from 'lucide-react'
 
@@ -19,27 +19,8 @@ function timeAgo(dateStr) {
   return `${Math.floor(hrs / 24)}d ago`
 }
 
-function subscribeToNotifications(userId, onInsert, onError) {
-  return supabase
-    .channel(`notifications:${userId}`)
-    .on('postgres_changes', {
-      event: 'INSERT',
-      schema: 'public',
-      table: 'notifications',
-      filter: `user_id=eq.${userId}`,
-    }, (payload) => {
-      onInsert(payload.new)
-    })
-    // FIX: Handle Realtime channel errors. Without this callback a network drop
-    // or Realtime quota failure is silent — the bell stops updating with no
-    // feedback to the user.
-    .subscribe((status, err) => {
-      if (status === 'CHANNEL_ERROR') {
-        console.error('Notification channel error:', err)
-        onError('Live updates unavailable. Refresh to reconnect.')
-      }
-    })
-}
+// Maximum reconnect delay: 30 seconds
+const MAX_RECONNECT_DELAY_MS = 30_000
 
 export default function NotificationBell() {
   const [notifications, setNotifications] = useState([])
@@ -50,40 +31,85 @@ export default function NotificationBell() {
   const [confirmClear, setConfirmClear] = useState(false)
   const panelRef = useRef(null)
 
+  // Refs for the reconnect logic so they don't need to be in state
+  const channelRef     = useRef(null)
+  const reconnectTimer = useRef(null)
+  const reconnectDelay = useRef(2_000) // starts at 2 s, doubles each attempt
+  const userIdRef      = useRef(null)  // stable copy for use inside callbacks
+
   const unreadCount = notifications.filter(n => n.is_read === false).length
 
-  useEffect(() => {
-    let channel
+  // ── subscribe / reconnect ────────────────────────────────────────────────
+  // Extracted so it can be called both on first mount and after CHANNEL_ERROR.
+  const subscribe = useCallback((uid) => {
+    // Clean up any previous channel first
+    if (channelRef.current) {
+      supabase.removeChannel(channelRef.current)
+      channelRef.current = null
+    }
 
+    const channel = supabase
+      .channel(`notifications:${uid}`)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'notifications',
+        filter: `user_id=eq.${uid}`,
+      }, (payload) => {
+        setNotifications(prev => [payload.new, ...prev])
+      })
+      .subscribe((status, err) => {
+        if (status === 'SUBSCRIBED') {
+          // Connected (or reconnected) successfully — reset backoff
+          reconnectDelay.current = 2_000
+          setFetchError(null)
+        }
+
+        if (status === 'CHANNEL_ERROR') {
+          // FIX: Previously this was a fire-and-forget error string with no
+          // reconnect attempt. Now we use exponential backoff (2 s → 4 s → 8 s
+          // … capped at 30 s) so the bell recovers automatically after a
+          // transient network blip without requiring a full page reload.
+          console.error('Notification channel error:', err)
+          setFetchError('Live updates interrupted. Reconnecting…')
+
+          const delay = reconnectDelay.current
+          reconnectDelay.current = Math.min(delay * 2, MAX_RECONNECT_DELAY_MS)
+
+          clearTimeout(reconnectTimer.current)
+          reconnectTimer.current = setTimeout(() => {
+            const currentUid = userIdRef.current
+            if (currentUid) subscribe(currentUid)
+          }, delay)
+        }
+      })
+
+    channelRef.current = channel
+  }, []) // no external deps — uses refs only
+
+  // ── init on mount ────────────────────────────────────────────────────────
+  useEffect(() => {
     async function init() {
-      // FIX: Previously called supabase.auth.getUser() here, which validates the
-      // JWT against Supabase's server on every mount — an unnecessary network
-      // round-trip just to get the user ID for a UI component.
-      //
-      // getSession() reads the session from local storage synchronously (no
-      // network request). Use getUser() only when you need server-side token
-      // validation before a write or a privileged operation.
+      // getSession() reads from local storage — no network round-trip needed
       const { data: { session } } = await supabase.auth.getSession()
       const user = session?.user
       if (!user) return
 
+      userIdRef.current = user.id
       setUserId(user.id)
       await fetchNotificationsForUser(user.id)
-
-      channel = subscribeToNotifications(user.id, (newNotification) => {
-        setNotifications(prev => [newNotification, ...prev])
-      }, (errMsg) => {
-        setFetchError(errMsg)
-      })
+      subscribe(user.id)
     }
 
     init()
 
     return () => {
-      if (channel) supabase.removeChannel(channel)
+      clearTimeout(reconnectTimer.current)
+      if (channelRef.current) supabase.removeChannel(channelRef.current)
     }
-  }, [])
+  }, [subscribe])
 
+  // ── close panel on outside click ─────────────────────────────────────────
   useEffect(() => {
     function handleClick(e) {
       if (panelRef.current && !panelRef.current.contains(e.target)) {
@@ -188,8 +214,8 @@ export default function NotificationBell() {
           <div className="overflow-y-auto flex-1">
             {fetchError ? (
               <div className="flex flex-col items-center justify-center py-10 gap-3 text-center px-4">
-                <AlertTriangle size={24} className="text-red-400" />
-                <p className="text-red-400 text-sm">{fetchError}</p>
+                <AlertTriangle size={24} className="text-amber-400" />
+                <p className="text-amber-400 text-sm">{fetchError}</p>
                 <button
                   onClick={() => userId && fetchNotificationsForUser(userId)}
                   className="text-indigo-400 text-xs font-semibold"
