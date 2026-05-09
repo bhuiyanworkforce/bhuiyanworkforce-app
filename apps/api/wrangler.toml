@@ -6,10 +6,23 @@ compatibility_flags = ["nodejs_compat"]
 [vars]
 ENVIRONMENT = "production"
 CORS_ORIGIN = "https://app.bhuiyanworkforce.com"
-API_URL = "https://api.bhuiyanworkforce.com"
+API_URL     = "https://api.bhuiyanworkforce.com"
 
-# Secrets added via Cloudflare dashboard:
+# ── KV namespace for rate limiting ──────────────────────────────────────────
+# Create the namespace once with:
+#   npx wrangler kv namespace create RATE_LIMIT_KV
+# Then paste the returned id below.
+# For local dev:
+#   npx wrangler kv namespace create RATE_LIMIT_KV --preview
+# and paste the preview_id below.
+[[kv_namespaces]]
+binding    = "RATE_LIMIT_KV"
+id         = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
+# preview_id = "REPLACE_WITH_YOUR_PREVIEW_KV_NAMESPACE_ID"
+
+# Secrets added via Cloudflare dashboard (wrangler secret put <NAME>):
 # SUPABASE_URL
 # SUPABASE_SERVICE_KEY
 # SUPABASE_ANON_KEY
 # RESEND_API_KEY
+# INTERNAL_SECRET
