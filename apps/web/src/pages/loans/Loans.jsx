@@ -30,7 +30,8 @@ function AddLoanModal({ onClose, onSaved }) {
       purpose: form.purpose||null, status: 'active'
     })
     if (err) { setError(err.message); setSaving(false); return }
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { session } } = await supabase.auth.getSession()
+    const user = session?.user
     const agent = agents.find(a => a.id === form.agent_id)
     await supabase.from('notifications').insert({
       user_id: user.id, title: 'Loan Issued',
@@ -100,13 +101,42 @@ function RepayModal({ loan, onClose, onSaved }) {
     const amt = Number.parseFloat(amount)
     if (!amt || amt <= 0) { setError('Enter a valid amount'); return }
     if (amt > remaining + 0.01) { setError(`Max repayment is ৳${remaining.toLocaleString()}`); return }
+
+    // Clamp to remaining balance to guard against floating-point drift
+    const clampedAmt = Math.min(amt, remaining)
+
     setSaving(true)
-    const { error: err } = await supabase.from('loan_repayments').insert({ loan_id: loan.id, amount: amt, paid_date: date, note: note || null })
-    if (err) { setError(err.message); setSaving(false); return }
-    const { data: reps } = await supabase.from('loan_repayments').select('amount').eq('loan_id', loan.id)
-    const paid = (reps || []).reduce((s, r) => s + Number.parseFloat(r.amount), 0)
-    const newBalance = Math.max(0, Number.parseFloat(loan.amount) - paid)
-    await supabase.from('loans').update({ status: newBalance <= 0 ? 'repaid' : 'partial', balance: newBalance }).eq('id', loan.id)
+    setError('')
+
+    // Insert the repayment record
+    const { error: insertErr } = await supabase
+      .from('loan_repayments')
+      .insert({ loan_id: loan.id, amount: clampedAmt, paid_date: date, note: note || null })
+
+    if (insertErr) { setError(insertErr.message); setSaving(false); return }
+
+    // Re-read ALL repayments from the server to compute the true balance.
+    // This guards against the race condition where two users submit a repayment
+    // at the same time: both read the same stale balance, but the second
+    // update here will see both inserts and compute the correct final balance.
+    const { data: reps, error: repsErr } = await supabase
+      .from('loan_repayments')
+      .select('amount')
+      .eq('loan_id', loan.id)
+
+    if (repsErr) { setError(repsErr.message); setSaving(false); return }
+
+    const totalPaid = (reps || []).reduce((s, r) => s + Number.parseFloat(r.amount), 0)
+    const newBalance = Math.max(0, Number.parseFloat(loan.amount) - totalPaid)
+    const newStatus = newBalance <= 0 ? 'repaid' : 'partial'
+
+    const { error: updateErr } = await supabase
+      .from('loans')
+      .update({ status: newStatus, balance: newBalance })
+      .eq('id', loan.id)
+
+    if (updateErr) { setError(updateErr.message); setSaving(false); return }
+
     onSaved()
   }
 
