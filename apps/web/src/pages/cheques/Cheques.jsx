@@ -1,7 +1,7 @@
 import PropTypes from 'prop-types'
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
-import { Plus, X, ChevronRight } from 'lucide-react'
+import { Plus, X, ChevronRight, AlertTriangle, RefreshCw } from 'lucide-react'
 
 const STATUS_COLOR = { pending:'bg-amber-500/15 text-amber-400', cleared:'bg-emerald-500/15 text-emerald-400', bounced:'bg-red-500/15 text-red-400', cancelled:'bg-slate-500/15 text-slate-400' }
 const TYPE_COLOR   = { receivable:'bg-blue-500/15 text-blue-400', payable:'bg-rose-500/15 text-rose-400' }
@@ -15,7 +15,6 @@ function AddChequeModal({ onClose, onSaved }) {
   async function handleSave() {
     if (!form.cheque_no || !form.party_name || !form.amount || !form.due_date) { setError('Cheque no, party, amount and due date required'); return }
     setSaving(true)
-    // L17: Number.parseFloat instead of parseFloat
     const { error: err } = await supabase.from('cheques').insert({ ...form, amount: Number.parseFloat(form.amount), issue_date: form.issue_date||null, notes: form.notes||null, bank_name: form.bank_name||null })
     if (err) { setError(err.message); setSaving(false); return }
     onSaved()
@@ -79,7 +78,6 @@ function AddChequeModal({ onClose, onSaved }) {
   )
 }
 
-// L8: PropTypes for AddChequeModal
 AddChequeModal.propTypes = {
   onClose: PropTypes.func.isRequired,
   onSaved: PropTypes.func.isRequired,
@@ -97,7 +95,6 @@ function ChequeDetail({ cheque: initial, onClose, onUpdated }) {
         date: new Date().toISOString().split('T')[0],
         category: 'other',
         description: `Cheque cleared — ${cheque.cheque_no} · ${cheque.party_name}`,
-        // L93: Number.parseFloat instead of parseFloat
         amount: Number.parseFloat(cheque.amount || 0),
         payment_method: 'cheque',
         reference_no: cheque.cheque_no,
@@ -122,7 +119,6 @@ function ChequeDetail({ cheque: initial, onClose, onUpdated }) {
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
           <div className="flex justify-between items-center mb-4">
             <span className={`text-xs font-bold uppercase px-3 py-1 rounded-full ${STATUS_COLOR[cheque.status]}`}>{cheque.status}</span>
-            {/* L117: Number.parseFloat */}
             <p className="text-indigo-400 text-xl font-extrabold">৳{Number.parseFloat(cheque.amount).toLocaleString()}</p>
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -147,18 +143,9 @@ function ChequeDetail({ cheque: initial, onClose, onUpdated }) {
         </div>
         {cheque.status === 'pending' && (
           <div className="flex flex-col gap-3">
-            <button onClick={() => updateStatus('cleared')} disabled={updating}
-              className="w-full bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-bold py-3.5 rounded-2xl disabled:opacity-50">
-              ✓ Mark as Cleared
-            </button>
-            <button onClick={() => updateStatus('bounced')} disabled={updating}
-              className="w-full bg-red-500/10 text-red-400 font-semibold py-3 rounded-2xl border border-red-500/20">
-              Mark as Bounced
-            </button>
-            <button onClick={() => updateStatus('cancelled')} disabled={updating}
-              className="w-full text-slate-500 font-semibold py-2 rounded-2xl">
-              Cancel Cheque
-            </button>
+            <button onClick={() => updateStatus('cleared')} disabled={updating} className="w-full bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-bold py-3.5 rounded-2xl disabled:opacity-50">✓ Mark as Cleared</button>
+            <button onClick={() => updateStatus('bounced')} disabled={updating} className="w-full bg-red-500/10 text-red-400 font-semibold py-3 rounded-2xl border border-red-500/20">Mark as Bounced</button>
+            <button onClick={() => updateStatus('cancelled')} disabled={updating} className="w-full text-slate-500 font-semibold py-2 rounded-2xl">Cancel Cheque</button>
           </div>
         )}
         {cheque.status === 'cleared' && (
@@ -169,15 +156,7 @@ function ChequeDetail({ cheque: initial, onClose, onUpdated }) {
         {cheque.status === 'bounced' && (
           <div className="bg-red-500/10 border border-red-500/30 rounded-2xl p-4 text-center">
             <p className="text-red-400 font-bold">✗ Cheque Bounced</p>
-            {/* L214: replaced non-interactive <div> onClick with a <button> to fix both:
-                - "Non-interactive elements should not be assigned mouse/keyboard event listeners"
-                - "Visible, non-interactive elements with click handlers must have at least one keyboard listener" */}
-            <button
-              type="button"
-              onClick={() => updateStatus('pending')}
-              className="text-xs text-slate-400 mt-2 underline">
-              Reopen as Pending
-            </button>
+            <button type="button" onClick={() => updateStatus('pending')} className="text-xs text-slate-400 mt-2 underline">Reopen as Pending</button>
           </div>
         )}
       </div>
@@ -185,19 +164,18 @@ function ChequeDetail({ cheque: initial, onClose, onUpdated }) {
   )
 }
 
-// L80: PropTypes for ChequeDetail
 ChequeDetail.propTypes = {
   cheque: PropTypes.shape({
-    id:          PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired,
-    cheque_no:   PropTypes.string,
-    party_name:  PropTypes.string,
-    bank_name:   PropTypes.string,
-    amount:      PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
-    issue_date:  PropTypes.string,
-    due_date:    PropTypes.string,
-    notes:       PropTypes.string,
-    status:      PropTypes.string,
-    type:        PropTypes.string,
+    id:         PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired,
+    cheque_no:  PropTypes.string,
+    party_name: PropTypes.string,
+    bank_name:  PropTypes.string,
+    amount:     PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+    issue_date: PropTypes.string,
+    due_date:   PropTypes.string,
+    notes:      PropTypes.string,
+    status:     PropTypes.string,
+    type:       PropTypes.string,
   }).isRequired,
   onClose:   PropTypes.func.isRequired,
   onUpdated: PropTypes.func.isRequired,
@@ -206,6 +184,8 @@ ChequeDetail.propTypes = {
 export default function Cheques() {
   const [cheques, setCheques] = useState([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const [refreshing, setRefreshing] = useState(false)
   const [filter, setFilter] = useState('all')
   const [showAdd, setShowAdd] = useState(false)
   const [selected, setSelected] = useState(null)
@@ -213,9 +193,22 @@ export default function Cheques() {
   useEffect(() => { fetchCheques() }, [])
 
   async function fetchCheques() {
-    const { data } = await supabase.from('cheques').select('*').order('due_date', { ascending: true })
-    setCheques(data || [])
-    setLoading(false)
+    setError(null)
+    try {
+      const { data, error: err } = await supabase.from('cheques').select('*').order('due_date', { ascending: true })
+      if (err) throw err
+      setCheques(data || [])
+    } catch {
+      setError('Failed to load cheques. Tap refresh to try again.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleRefresh() {
+    setRefreshing(true)
+    await fetchCheques()
+    setRefreshing(false)
   }
 
   const filtered = filter === 'all' ? cheques : cheques.filter(c => c.status === filter || c.type === filter)
@@ -225,17 +218,20 @@ export default function Cheques() {
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
         <div><h1 className="text-2xl font-extrabold text-slate-100">Cheques</h1><p className="text-slate-500 text-sm">{cheques.length} cheques</p></div>
-        <button onClick={()=>setShowAdd(true)} className="flex items-center gap-2 bg-gradient-to-r from-indigo-500 to-violet-600 text-white px-4 py-2.5 rounded-xl text-sm font-bold shadow-lg"><Plus size={16}/> Add</button>
+        <div className="flex items-center gap-2">
+          <button onClick={handleRefresh} disabled={refreshing} className="p-2 rounded-xl bg-slate-800 text-slate-400 disabled:opacity-50">
+            <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
+          </button>
+          <button onClick={()=>setShowAdd(true)} className="flex items-center gap-2 bg-gradient-to-r from-indigo-500 to-violet-600 text-white px-4 py-2.5 rounded-xl text-sm font-bold shadow-lg"><Plus size={16}/> Add</button>
+        </div>
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-3">
           <p className="text-xs text-slate-500 font-semibold">Receivable</p>
-          {/* L198: Number.parseFloat */}
           <p className="text-lg font-extrabold text-blue-400">৳{cheques.filter(c=>c.type==='receivable'&&c.status==='pending').reduce((s,c)=>s+Number.parseFloat(c.amount||0),0).toLocaleString()}</p>
         </div>
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-3">
           <p className="text-xs text-slate-500 font-semibold">Payable</p>
-          {/* L202: Number.parseFloat */}
           <p className="text-lg font-extrabold text-rose-400">৳{cheques.filter(c=>c.type==='payable'&&c.status==='pending').reduce((s,c)=>s+Number.parseFloat(c.amount||0),0).toLocaleString()}</p>
         </div>
       </div>
@@ -244,19 +240,21 @@ export default function Cheques() {
           <button key={t} onClick={()=>setFilter(t)} className={`flex-none px-3 py-1.5 rounded-full text-xs font-bold capitalize transition-colors ${filter===t?'bg-indigo-500 text-white':'bg-slate-800 text-slate-400'}`}>{t}</button>
         ))}
       </div>
-      {loading ? <div className="flex justify-center py-12"><div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"/></div> : (
+
+      {error ? (
+        <div className="flex flex-col items-center justify-center py-12 gap-3">
+          <AlertTriangle size={28} className="text-red-400" />
+          <p className="text-red-400 text-sm text-center">{error}</p>
+          <button onClick={handleRefresh} className="bg-indigo-500 text-white font-bold px-5 py-2.5 rounded-xl text-sm">Retry</button>
+        </div>
+      ) : loading ? (
+        <div className="flex justify-center py-12"><div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"/></div>
+      ) : (
         <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
           {filtered.length === 0 ? <p className="text-center text-slate-600 py-12 text-sm">No cheques found</p> : (
             <ul>{filtered.map((c,i)=>(
-              // L214 (list item): use a <button> wrapper or add role+keyboard handler.
-              // Here we keep <li> for semantic list structure but move the interaction
-              // to an inner accessible button covering the full row.
               <li key={c.id} className={`flex items-start gap-2 px-4 py-4 transition-colors ${i<filtered.length-1?'border-b border-slate-800':''}`}>
-                <button
-                  type="button"
-                  onClick={()=>setSelected(c)}
-                  className="flex items-start gap-2 w-full text-left active:bg-slate-800"
-                >
+                <button type="button" onClick={()=>setSelected(c)} className="flex items-start gap-2 w-full text-left active:bg-slate-800">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
                       <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${TYPE_COLOR[c.type]}`}>{c.type}</span>
@@ -267,7 +265,6 @@ export default function Cheques() {
                     <p className="text-slate-500 text-xs">Due: {new Date(c.due_date).toLocaleDateString()}</p>
                   </div>
                   <div className="flex flex-col items-end gap-2 flex-none">
-                    {/* L225: Number.parseFloat */}
                     <p className="text-white font-bold text-sm">৳{Number.parseFloat(c.amount).toLocaleString()}</p>
                     <ChevronRight size={16} className="text-slate-600"/>
                   </div>
