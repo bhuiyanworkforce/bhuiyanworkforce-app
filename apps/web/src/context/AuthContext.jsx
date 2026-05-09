@@ -1,38 +1,43 @@
-import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 
 // ── Auth Context ───────────────────────────────────────────────────────────────
-// ROOT CAUSE FIX: Previously useAuth() was a plain hook with no shared state.
-// Every component that called useAuth() (ProtectedRoute, AppLayout, Login,
-// Profile) created its OWN independent Supabase listener and its own loading
-// state. This meant multiple redundant getSession() calls and onAuthStateChange
-// subscriptions on every render cycle.
+// ROOT CAUSE OF INFINITE SPINNER ON REFRESH:
 //
-// More critically: each instance started with loading=true. If the instance
-// inside ProtectedRoute resolved but then the component subtree re-mounted
-// (e.g. during Suspense chunk loading), a fresh instance would start over
-// with loading=true again — causing the infinite spinner.
+// The previous implementation ran BOTH:
+//   1. supabase.auth.getSession()          — explicit hydration call
+//   2. onAuthStateChange(INITIAL_SESSION)  — Supabase fires this automatically
+//                                            on mount with the stored session
 //
-// Fix: a single AuthProvider at the root holds all auth state. Every useAuth()
-// call reads from the same context — one listener, one loading state, shared
-// everywhere.
+// Both paths called fetchProfile(), which called finishLoading() via a
+// loadingDone ref guard (only fires once). The race:
+//
+//   A. INITIAL_SESSION fires first → fetchProfile() → finishLoading() locks
+//   B. getSession() resolves → fetchProfile() again → finishLoading() is
+//      already locked → DOES NOTHING
+//   Result if A's fetchProfile had already consumed the lock: loading stays
+//   true if the second fetchProfile is the one that actually gets the data.
+//
+//   Worse: if INITIAL_SESSION fires and fetchProfile throws, the lock is
+//   consumed by the catch block's finishLoading(). Then getSession() calls
+//   fetchProfile() again → lock already consumed → loading stays true forever.
+//
+// FIX: Delete getSession() entirely.
+// onAuthStateChange always fires INITIAL_SESSION synchronously on mount with
+// whatever session is in storage. It is the single source of truth for the
+// initial session state. getSession() is redundant and creates the race.
+//
+// With only one code path, there is no race, no double-fetch, and no way for
+// the loadingDone lock to be consumed before setLoading(false) fires.
 // ──────────────────────────────────────────────────────────────────────────────
 
 const AuthContext = createContext(null)
 
 export function AuthProvider({ children }) {
-  const [user, setUser]         = useState(null)
-  const [profile, setProfile]   = useState(null)
-  const [loading, setLoading]   = useState(true)
+  const [user, setUser]           = useState(null)
+  const [profile, setProfile]     = useState(null)
+  const [loading, setLoading]     = useState(true)
   const [authError, setAuthError] = useState(null)
-  const loadingDone = useRef(false)
-
-  const finishLoading = useCallback(() => {
-    if (!loadingDone.current) {
-      loadingDone.current = true
-      setLoading(false)
-    }
-  }, [])
 
   const fetchProfile = useCallback(async (userId) => {
     try {
@@ -44,56 +49,38 @@ export function AuthProvider({ children }) {
 
       if (error) {
         if (error.code === 'PGRST116') {
-          // No profile row yet — not an error, just means the trigger
-          // hasn't created it yet (first sign-in race). App still works.
+          // No profile row yet (first sign-in race with DB trigger). Fine.
           setProfile(null)
         } else {
           console.error('[Auth] fetchProfile failed:', error)
           setAuthError('Failed to load your profile. Please sign in again.')
           setProfile(null)
         }
-        return false
+      } else {
+        setProfile(data)
+        setAuthError(null)
       }
-
-      setProfile(data)
-      setAuthError(null)
-      return true
     } catch (err) {
       console.error('[Auth] fetchProfile unexpected error:', err)
       setAuthError('An unexpected error occurred. Please sign in again.')
       setProfile(null)
-      return false
     } finally {
-      finishLoading()
+      // Always unblock the app — this is the ONLY place setLoading(false) fires
+      // for the initial load, so there is no race condition possible.
+      setLoading(false)
     }
-  }, [finishLoading])
+  }, [])
 
   useEffect(() => {
-    // Safety net: if everything hangs (network down, Supabase cold start,
-    // RLS block), unblock the app after 5 seconds so users see the login
-    // page instead of a frozen spinner.
+    // Safety net: unblock after 8 s if Supabase never fires INITIAL_SESSION
+    // (e.g. network completely down before the JS bundle even loads).
     const timeout = setTimeout(() => {
       console.warn('[Auth] Loading timed out — unblocking app')
-      finishLoading()
-    }, 5000)
+      setLoading(false)
+    }, 8000)
 
-    // Initial session hydration
-    supabase.auth.getSession()
-      .then(({ data: { session } }) => {
-        setUser(session?.user ?? null)
-        if (session?.user) {
-          fetchProfile(session.user.id)
-        } else {
-          finishLoading()
-        }
-      })
-      .catch((err) => {
-        console.error('[Auth] getSession failed:', err)
-        setAuthError('Unable to reach the server. Check your connection.')
-        finishLoading()
-      })
-
-    // Single shared listener for the entire app lifetime
+    // onAuthStateChange fires INITIAL_SESSION synchronously on mount with the
+    // persisted session (or null). This replaces getSession() entirely.
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (_event, session) => {
         setUser(session?.user ?? null)
@@ -104,14 +91,17 @@ export function AuthProvider({ children }) {
             _event === 'SIGNED_IN'       ||
             _event === 'USER_UPDATED'
           ) {
+            // fetchProfile calls setLoading(false) in its finally block.
+            // For INITIAL_SESSION this is the first and only path that
+            // calls setLoading(false) — no race possible.
             await fetchProfile(session.user.id)
           }
-          // TOKEN_REFRESHED: session is still valid, skip profile re-fetch
+          // TOKEN_REFRESHED: token rotated, session still valid — no reload needed
         } else {
+          // Signed out or no session
           setProfile(null)
           setAuthError(null)
-          loadingDone.current = false
-          finishLoading()
+          setLoading(false)
         }
       }
     )
@@ -120,7 +110,7 @@ export function AuthProvider({ children }) {
       clearTimeout(timeout)
       subscription.unsubscribe()
     }
-  }, [fetchProfile, finishLoading])
+  }, [fetchProfile])
 
   const signIn = useCallback(async (email, password) => {
     setAuthError(null)
@@ -131,8 +121,9 @@ export function AuthProvider({ children }) {
 
   const signOut = useCallback(async () => {
     setAuthError(null)
-    loadingDone.current = false
+    setLoading(true) // show spinner during sign-out transition
     await supabase.auth.signOut()
+    // onAuthStateChange will fire with null session → setLoading(false)
   }, [])
 
   return (
