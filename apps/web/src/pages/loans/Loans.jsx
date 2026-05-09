@@ -1,9 +1,13 @@
 import PropTypes from 'prop-types'
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
-import { Plus, X, ChevronDown, ChevronUp } from 'lucide-react'
+import { Plus, X, ChevronDown, ChevronUp, AlertTriangle, RefreshCw } from 'lucide-react'
 
-const STATUS_COLOR = { active:'bg-amber-500/15 text-amber-400', repaid:'bg-emerald-500/15 text-emerald-400', partial:'bg-blue-500/15 text-blue-400' }
+const STATUS_COLOR = {
+  active:  'bg-amber-500/15 text-amber-400',
+  repaid:  'bg-emerald-500/15 text-emerald-400',
+  partial: 'bg-blue-500/15 text-blue-400',
+}
 
 function AddLoanModal({ onClose, onSaved }) {
   const [form, setForm] = useState({ agent_id:'', amount:'', issued_date: new Date().toISOString().slice(0,10), due_date:'', purpose:'', notes:'' })
@@ -155,6 +159,8 @@ RepayModal.propTypes = {
 export default function Loans() {
   const [loans, setLoans] = useState([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const [refreshing, setRefreshing] = useState(false)
   const [filter, setFilter] = useState('all')
   const [showAdd, setShowAdd] = useState(false)
   const [repaying, setRepaying] = useState(null)
@@ -164,12 +170,24 @@ export default function Loans() {
   useEffect(() => { fetchLoans() }, [])
 
   async function fetchLoans() {
-    const { data, error } = await supabase
-      .from('loans').select('*, agents(id, full_name)')
-      .order('created_at', { ascending: false })
-    if (error) console.error('Loans fetch error:', error.message)
-    setLoans(data || [])
-    setLoading(false)
+    setError(null)
+    try {
+      const { data, error: err } = await supabase
+        .from('loans').select('*, agents(id, full_name)')
+        .order('created_at', { ascending: false })
+      if (err) throw err
+      setLoans(data || [])
+    } catch {
+      setError('Failed to load loans. Tap refresh to try again.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleRefresh() {
+    setRefreshing(true)
+    await fetchLoans()
+    setRefreshing(false)
   }
 
   async function toggleExpand(loanId) {
@@ -187,7 +205,6 @@ export default function Loans() {
 
   const filtered = filter === 'all' ? loans : loans.filter(l => l.status === filter)
 
-  // Counts for tabs
   const counts = {
     active:  loans.filter(l => l.status === 'active').length,
     partial: loans.filter(l => l.status === 'partial').length,
@@ -198,7 +215,12 @@ export default function Loans() {
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
         <div><h1 className="text-2xl font-extrabold text-slate-100">Loans</h1><p className="text-slate-500 text-sm">{loans.length} loans</p></div>
-        <button onClick={() => setShowAdd(true)} className="flex items-center gap-2 bg-gradient-to-r from-violet-500 to-purple-600 text-white px-4 py-2.5 rounded-xl text-sm font-bold shadow-lg"><Plus size={16}/> Issue</button>
+        <div className="flex items-center gap-2">
+          <button onClick={handleRefresh} disabled={refreshing} className="p-2 rounded-xl bg-slate-800 text-slate-400 disabled:opacity-50">
+            <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
+          </button>
+          <button onClick={() => setShowAdd(true)} className="flex items-center gap-2 bg-gradient-to-r from-violet-500 to-purple-600 text-white px-4 py-2.5 rounded-xl text-sm font-bold shadow-lg"><Plus size={16}/> Issue</button>
+        </div>
       </div>
 
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
@@ -206,21 +228,26 @@ export default function Loans() {
         <p className="text-xl font-extrabold text-violet-400">৳{totalOutstanding.toLocaleString()}</p>
       </div>
 
-      {/* Filter tabs */}
       <div className="flex gap-2 overflow-x-auto pb-1">
-        <button onClick={() => setFilter('all')}
-          className={`flex-none px-4 py-1.5 rounded-full text-xs font-bold transition-colors ${filter === 'all' ? 'bg-indigo-500 text-white' : 'bg-slate-800 text-slate-400'}`}>
+        <button onClick={() => setFilter('all')} className={`flex-none px-4 py-1.5 rounded-full text-xs font-bold transition-colors ${filter === 'all' ? 'bg-indigo-500 text-white' : 'bg-slate-800 text-slate-400'}`}>
           All ({loans.length})
         </button>
         {[['active','Active'],['partial','Partial'],['repaid','Repaid']].map(([key, label]) => (
-          <button key={key} onClick={() => setFilter(key)}
-            className={`flex-none px-4 py-1.5 rounded-full text-xs font-bold capitalize transition-colors ${filter === key ? 'bg-indigo-500 text-white' : 'bg-slate-800 text-slate-400'}`}>
+          <button key={key} onClick={() => setFilter(key)} className={`flex-none px-4 py-1.5 rounded-full text-xs font-bold capitalize transition-colors ${filter === key ? 'bg-indigo-500 text-white' : 'bg-slate-800 text-slate-400'}`}>
             {label} {counts[key] > 0 ? `(${counts[key]})` : ''}
           </button>
         ))}
       </div>
 
-      {loading ? <div className="flex justify-center py-12"><div className="w-8 h-8 border-2 border-violet-500 border-t-transparent rounded-full animate-spin"/></div> : (
+      {error ? (
+        <div className="flex flex-col items-center justify-center py-12 gap-3">
+          <AlertTriangle size={28} className="text-red-400" />
+          <p className="text-red-400 text-sm text-center">{error}</p>
+          <button onClick={handleRefresh} className="bg-indigo-500 text-white font-bold px-5 py-2.5 rounded-xl text-sm">Retry</button>
+        </div>
+      ) : loading ? (
+        <div className="flex justify-center py-12"><div className="w-8 h-8 border-2 border-violet-500 border-t-transparent rounded-full animate-spin"/></div>
+      ) : (
         <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
           {filtered.length === 0 ? <p className="text-center text-slate-600 py-12 text-sm">No {filter !== 'all' ? filter : ''} loans</p> : (
             <ul>{filtered.map((l, i) => {
