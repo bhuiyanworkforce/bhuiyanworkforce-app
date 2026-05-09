@@ -142,7 +142,7 @@ export default function AppLayout() {
       {/* Header */}
       <header className="sticky top-0 z-50 bg-[#08050F] border-b border-slate-800 px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <div className="text-white font-bold text-xl">Bhuiyan Workforce</div>
+          <div className="text-white font-bold text-xl">Bhuiyan Books</div>
         </div>
 
         <div className="flex items-center gap-3">
@@ -181,7 +181,7 @@ export default function AppLayout() {
           role="presentation"
         >
           <div className="flex justify-between items-center mb-8">
-            <div className="text-white font-bold text-2xl">Bhuiyan Workforce</div>
+            <div className="text-white font-bold text-2xl">Bhuiyan Books</div>
             <button onClick={closeMenu} aria-label="Close menu">
               <X size={24} className="text-slate-400" />
             </button>
