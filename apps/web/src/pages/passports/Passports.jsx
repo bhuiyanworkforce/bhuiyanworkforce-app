@@ -22,28 +22,56 @@ const STATUS_COLOR = {
 const STATUSES = ['received','interview','medical','police_clearance','bmet','calling_list','visa_stamping','mofa','traveling','returned','cancelled']
 const PAGE_SIZE = 20
 
-// FIX L25: Extracted query-building into a helper to reduce cognitive complexity
-// of fetchPassports from 17 → well below the 15 allowed threshold.
-function buildPassportsQuery(supabaseClient, { searchTerm, status, from, to, newOffset }) {
-  let query = supabaseClient
-    .from('passports')
-    .select('*, candidates(full_name, phone)')
-    .order('created_at', { ascending: false })
-    .range(newOffset, newOffset + PAGE_SIZE - 1)
+// FIX: Candidate name search was broken because PostgREST does not support
+// filtering on a related (joined) table column via a plain .or() string.
+// The previous query:
+//   .or(`passport_no.ilike.%${term}%,candidates.full_name.ilike.%${term}%`)
+// silently returned no results when searching by name.
+//
+// Fix: Split into two separate queries — one for passport_no, one for
+// candidate full_name — then merge and deduplicate by id client-side.
+// This is the correct approach when PostgREST foreign-table filtering
+// is not available via simple .or().
+async function fetchPassportsBySearch(supabaseClient, { searchTerm, status, from, to, newOffset }) {
+  // Base query builder (no search filter — applied per-branch below)
+  function base() {
+    let q = supabaseClient
+      .from('passports')
+      .select('*, candidates(full_name, phone)')
+      .order('created_at', { ascending: false })
 
-  if (status && status !== 'all') {
-    query = query.eq('status', status)
+    if (status && status !== 'all') q = q.eq('status', status)
+    if (from) q = q.gte('created_at', from)
+    if (to)   q = q.lte('created_at', `${to}T23:59:59`)
+    return q
   }
-  if (searchTerm?.trim()) {
-    query = query.or(`passport_no.ilike.%${searchTerm}%,candidates.full_name.ilike.%${searchTerm}%`)
+
+  const term = searchTerm?.trim()
+
+  if (!term) {
+    // No search term — simple paginated query
+    const { data } = await base().range(newOffset, newOffset + PAGE_SIZE - 1)
+    return data || []
   }
-  if (from) {
-    query = query.gte('created_at', from)
+
+  // Two parallel queries: match by passport_no OR by candidate name
+  const [byPassportNo, byCandidateName] = await Promise.all([
+    base().ilike('passport_no', `%${term}%`).limit(PAGE_SIZE),
+    base().ilike('candidates.full_name', `%${term}%`).limit(PAGE_SIZE),
+  ])
+
+  // Merge and deduplicate by passport id
+  const seen = new Set()
+  const merged = []
+  for (const p of [...(byPassportNo.data || []), ...(byCandidateName.data || [])]) {
+    if (!seen.has(p.id)) {
+      seen.add(p.id)
+      merged.push(p)
+    }
   }
-  if (to) {
-    query = query.lte('created_at', `${to}T23:59:59`)
-  }
-  return query
+
+  // Apply pagination on the merged result
+  return merged.slice(newOffset, newOffset + PAGE_SIZE)
 }
 
 export default function Passports() {
@@ -67,7 +95,6 @@ export default function Passports() {
   const longPressTimer = useRef(null)
 
   useEffect(() => {
-    // FIX L48 & L53: Prefer `globalThis` over `window`
     if (location.state?.openId && location.state?.openData) {
       setSelected(location.state.openData)
       globalThis.history.replaceState({}, '')
@@ -83,11 +110,8 @@ export default function Passports() {
     if (newOffset === 0) setLoading(true)
     else setLoadingMore(true)
 
-    const query = buildPassportsQuery(supabase, { searchTerm, status, from, to, newOffset })
-    const { data } = await query
-    const results = data || []
+    const results = await fetchPassportsBySearch(supabase, { searchTerm, status, from, to, newOffset })
 
-    // FIX L91 & L93: Remove useless empty object spreads
     if (newOffset === 0) setPassports(results)
     else setPassports(prev => [...prev, ...results])
 
@@ -103,7 +127,6 @@ export default function Passports() {
   }, [search, statusFilter, dateFrom, dateTo, fetchPassports])
 
   function handleUpdated(newStatus, updatedPassport) {
-    // FIX L91 & L93: No more `...(updatedPassport || {})` — spread only when defined
     setPassports(prev => prev.map(p => {
       if (p.id !== selected.id) return p
       return updatedPassport ? { ...p, status: newStatus, ...updatedPassport } : { ...p, status: newStatus }
@@ -150,18 +173,15 @@ export default function Passports() {
     return new Date(expiry) < months3
   }
 
-  // FIX L120: Unexpected negated condition — use positive conditions instead
   const statusFilterCount = statusFilter === 'all' ? 0 : 1
   const activeFilters = statusFilterCount + (dateFrom ? 1 : 0) + (dateTo ? 1 : 0)
 
-  // FIX L146: Extract nested ternary for bulk update button label
   function getBulkButtonLabel() {
     if (bulkUpdating) return 'Updating...'
     const suffix = bulkSelected.length > 1 ? 's' : ''
     return `Update ${bulkSelected.length} Passport${suffix}`
   }
 
-  // FIX L211: Extract nested ternary for bulk mode icon rendering
   function renderBulkIcon(p) {
     if (bulkSelected.includes(p.id)) {
       return <CheckCircle size={20} className="text-indigo-400 flex-none" />
@@ -169,8 +189,6 @@ export default function Passports() {
     return <Circle size={20} className="text-slate-600 flex-none" />
   }
 
-  // FIX L205: Non-interactive <li> elements must not have mouse/keyboard handlers.
-  // Wrap content in a focusable <button> for accessibility instead.
   function handlePassportClick(p) {
     if (bulkMode) toggleBulkSelect(p.id)
     else setSelected(p)
@@ -200,7 +218,6 @@ export default function Passports() {
               className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm text-slate-100"
             >
               <option value="">Select new status...</option>
-              {/* FIX L142: replaceAll instead of replace */}
               {STATUSES.map(s => <option key={s} value={s}>{s.replaceAll('_', ' ')}</option>)}
             </select>
             <button
@@ -208,7 +225,6 @@ export default function Passports() {
               disabled={!bulkStatus || bulkSelected.length === 0 || bulkUpdating}
               className="w-full bg-indigo-600 text-white font-bold py-3 rounded-xl disabled:opacity-50"
             >
-              {/* FIX L146: extracted ternary above */}
               {getBulkButtonLabel()}
             </button>
           </div>
@@ -260,7 +276,6 @@ export default function Passports() {
                     onClick={() => setStatusFilter(s)}
                     className={"px-3 py-1 rounded-full text-xs font-bold capitalize " + (statusFilter === s ? 'bg-indigo-500 text-white' : 'bg-slate-800 text-slate-400')}
                   >
-                    {/* FIX L175: replaceAll instead of replace */}
                     {s.replaceAll('_', ' ')}
                   </button>
                 ))}
@@ -292,8 +307,6 @@ export default function Passports() {
             ) : (
               <ul>
                 {passports.map((p, i) => (
-                  // FIX L205: <li> is non-interactive; moved all interaction onto an inner <button>
-                  // Also satisfies the keyboard-listener requirement (buttons are keyboard-accessible by default)
                   <li
                     key={p.id}
                     className={"flex items-center " + (i < passports.length - 1 ? 'border-b border-slate-800' : '')}
@@ -307,7 +320,6 @@ export default function Passports() {
                       onClick={() => handlePassportClick(p)}
                       className={"w-full flex items-center gap-3 px-4 py-4 text-left cursor-pointer active:bg-slate-800 transition-colors " + (bulkSelected.includes(p.id) ? 'bg-indigo-500/10' : '')}
                     >
-                      {/* FIX L211: extracted nested ternary into renderBulkIcon() */}
                       {bulkMode ? (
                         renderBulkIcon(p)
                       ) : (
@@ -322,7 +334,6 @@ export default function Passports() {
                           <p className="text-amber-400 text-xs mt-0.5">Expires {new Date(p.expiry_date).toLocaleDateString()}</p>
                         )}
                       </div>
-                      {/* FIX L220: replaceAll instead of replace */}
                       <span className={"text-[10px] font-bold uppercase tracking-wide px-2 py-1 rounded-full " + (STATUS_COLOR[p.status] || 'bg-slate-700 text-slate-300')}>
                         {p.status?.replaceAll('_', ' ')}
                       </span>
