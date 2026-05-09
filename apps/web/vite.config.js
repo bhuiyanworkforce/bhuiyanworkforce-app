@@ -7,6 +7,24 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+
+      // FIX: Without navigateFallback, the Workbox service worker had no
+      // instruction for what to serve on navigation requests (e.g. refreshing
+      // /dashboard). It fell through to the network, which on Cloudflare Pages
+      // returned a cached or stale response that never resolved — causing the
+      // infinite spinner on every hard refresh.
+      //
+      // navigateFallback: '/index.html' tells Workbox to serve index.html for
+      // all navigation requests that don't match a precached asset, which is
+      // exactly what a SPA needs. React Router then takes over client-side.
+      //
+      // navigateFallbackDenylist excludes the Cloudflare _redirects file and
+      // any API/worker routes from being swallowed by the fallback.
+      workbox: {
+        navigateFallback: '/index.html',
+        navigateFallbackDenylist: [/^\/_/, /\/[^/?]+\.[^/]+$/],
+      },
+
       manifest: {
         name: 'Bhuiyan Books',
         short_name: 'Bhuiyan Books',
