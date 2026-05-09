@@ -107,9 +107,16 @@ export default function Expenses() {
   useEffect(() => { fetchExpenses() }, [])
 
   async function fetchExpenses() {
-    const { data } = await supabase.from('expenses').select('*, vendors(name)').order('date', { ascending: false })
-    setExpenses(data || [])
-    setLoading(false)
+    try {
+      const { data, error } = await supabase.from('expenses').select('*, vendors(name)').order('date', { ascending: false })
+      if (error) throw error
+      setExpenses(data || [])
+    } catch (err) {
+      console.error('[Expenses] fetchExpenses failed:', err)
+      setExpenses([])
+    } finally {
+      setLoading(false)
+    }
   }
 
   const filtered = expenses.filter(e =>
