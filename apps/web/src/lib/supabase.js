@@ -45,20 +45,15 @@ function fetchWithTimeout(url, options = {}) {
 }
 
 // ── Supabase client ────────────────────────────────────────────────────────────
-// KEY FIX: autoRefreshToken: false on initial client creation.
+// On slow mobile (Bangladesh 3G/4G), Supabase JS v2 proactively refreshes the
+// access token on every page load even when the token is still valid. This
+// refresh request can hang indefinitely, blocking INITIAL_SESSION from firing
+// and causing an infinite spinner.
 //
-// Supabase JS v2 proactively refreshes the access token on every page load
-// even when the token is still valid. On slow mobile this refresh request
-// hangs, blocking INITIAL_SESSION and causing the infinite spinner.
-//
-// Setting autoRefreshToken: false stops the proactive refresh.
-// We then manually re-enable it after the INITIAL_SESSION fires (in
-// AuthContext) so tokens still rotate normally during the session.
-//
-// Alternative approach used here: keep autoRefreshToken: true but rely on
-// the 6s fetchWithTimeout to abort the stalled refresh quickly, so
-// INITIAL_SESSION fires with the existing (still-valid) stored token instead
-// of waiting for a refreshed one.
+// Fix: keep autoRefreshToken: true (so tokens rotate normally during a session)
+// but rely on the 6s fetchWithTimeout above to abort any stalled refresh quickly.
+// When the refresh times out, INITIAL_SESSION fires with the existing stored
+// token (still valid) instead of waiting for a refreshed one — no spinner.
 // ──────────────────────────────────────────────────────────────────────────────
 export const supabase = createClient(
   supabaseUrl    ?? 'http://localhost',
