@@ -50,10 +50,38 @@ export default function Candidates() {
     }
   }, [location.state])
 
+  // ── Improvement B ──────────────────────────────────────────────────────────
+  // Old approach: SELECT status FROM candidates (fetches every row, counts in JS)
+  // New approach: ask Postgres to GROUP BY status and return only the counts.
+  //
+  // This uses a simple Supabase RPC backed by this SQL function (add once to DB):
+  //
+  //   create or replace function get_candidate_stage_counts()
+  //   returns table(status text, count bigint)
+  //   language sql stable security definer as $$
+  //     select coalesce(status, 'new') as status, count(*) as count
+  //     from candidates
+  //     group by coalesce(status, 'new');
+  //   $$;
+  //
+  // If the RPC isn't available yet (returns an error), we fall back to the
+  // original approach so nothing breaks during the migration.
+  // ───────────────────────────────────────────────────────────────────────────
   const fetchStageCounts = useCallback(async () => {
-    const { data } = await supabase.from('candidates').select('status')
+    const { data, error: rpcError } = await supabase.rpc('get_candidate_stage_counts')
+
+    if (!rpcError && data) {
+      const counts = {}
+      data.forEach(row => { counts[row.status] = Number(row.count) })
+      setStageCounts(counts)
+      return
+    }
+
+    // Fallback: original client-side approach
+    console.warn('get_candidate_stage_counts RPC not available, falling back:', rpcError?.message)
+    const { data: rows } = await supabase.from('candidates').select('status')
     const counts = {}
-    data?.forEach(c => {
+    rows?.forEach(c => {
       const s = c.status || 'new'
       counts[s] = (counts[s] || 0) + 1
     })
