@@ -79,12 +79,16 @@ export function useAuth() {
       }
     })
 
-    // Listen for sign-in / sign-out / token-refresh events
+    // Listen for sign-in / sign-out / token-refresh events.
+    // TOKEN_REFRESHED fires every ~60 minutes — skipping fetchProfile on it
+    // avoids an unnecessary round-trip to the profiles table on each refresh.
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (_event, session) => {
         setUser(session?.user ?? null)
         if (session?.user) {
-          await fetchProfile(session.user.id)
+          if (_event === 'SIGNED_IN' || _event === 'USER_UPDATED') {
+            await fetchProfile(session.user.id)
+          }
         } else {
           setProfile(null)
           setAuthError(null)
