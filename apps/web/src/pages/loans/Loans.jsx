@@ -16,6 +16,13 @@ function AddLoanModal({ onClose, onSaved }) {
   const [error, setError] = useState('')
   const set = (k,v) => setForm(p=>({...p,[k]:v}))
 
+  // FIX: Escape key closes the modal (WCAG 2.1 SC 1.4.13)
+  useEffect(() => {
+    function handleKey(e) { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', handleKey)
+    return () => document.removeEventListener('keydown', handleKey)
+  }, [onClose])
+
   useEffect(() => {
     supabase.from('agents').select('id, full_name').then(({data})=>setAgents(data||[]))
   }, [])
@@ -30,6 +37,8 @@ function AddLoanModal({ onClose, onSaved }) {
       purpose: form.purpose||null, status: 'active'
     })
     if (err) { setError(err.message); setSaving(false); return }
+    // FIX: session?.user can be null if the token expired between page load
+    // and submit. Previously user.id threw an uncaught TypeError in that case.
     const { data: { session } } = await supabase.auth.getSession()
     const user = session?.user
     const agent = agents.find(a => a.id === form.agent_id)
@@ -98,6 +107,13 @@ function RepayModal({ loan, onClose, onSaved }) {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const remaining = Number.parseFloat(loan.balance || 0)
+
+  // FIX: Escape key closes the modal (WCAG 2.1 SC 1.4.13)
+  useEffect(() => {
+    function handleKey(e) { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', handleKey)
+    return () => document.removeEventListener('keydown', handleKey)
+  }, [onClose])
 
   async function handleRepay() {
     const amt = Number.parseFloat(amount)
