@@ -16,10 +16,8 @@ jobs:
         working-directory: apps/web
         run: |
           npm install -g pnpm
-          # FIX: --no-frozen-lockfile was removed. Using --frozen-lockfile ensures
-          # CI installs exactly what is pinned in pnpm-lock.yaml and fails loudly
-          # if the lockfile is out of date, rather than silently installing
-          # different package versions from what was tested locally.
+          # --frozen-lockfile ensures CI installs exactly what is pinned in
+          # pnpm-lock.yaml and fails loudly if the lockfile is out of date.
           pnpm install --frozen-lockfile
       - name: Build
         working-directory: apps/web
@@ -34,3 +32,26 @@ jobs:
           apiToken: ${{ secrets.CF_API_TOKEN }}
           accountId: ${{ secrets.CF_ACCOUNT_ID }}
           command: pages deploy apps/web/dist --project-name=bhuiyanworkforce-app --branch=main
+
+  # FIX: The Hono API (apps/api) was never deployed by CI — it had to be
+  # deployed manually with `wrangler deploy`. This job deploys it automatically
+  # on every push to main, keeping the API in sync with the frontend.
+  deploy-api:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install dependencies
+        working-directory: apps/api
+        run: |
+          npm install -g pnpm
+          pnpm install --frozen-lockfile
+      - name: Deploy to Cloudflare Workers
+        uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3.15.0
+        with:
+          apiToken: ${{ secrets.CF_API_TOKEN }}
+          accountId: ${{ secrets.CF_ACCOUNT_ID }}
+          workingDirectory: apps/api
+          command: deploy
