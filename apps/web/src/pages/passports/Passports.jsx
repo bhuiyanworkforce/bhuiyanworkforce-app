@@ -2,24 +2,12 @@ import { useEffect, useState, useRef, useCallback } from 'react'
 import { useLocation } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { Plus, Search, ChevronRight, CheckCircle, Circle, X, SlidersHorizontal } from 'lucide-react'
+import { PASSPORT_STATUS_COLOR as STATUS_COLOR, PASSPORT_WORKFLOW_STAGES as STATUSES_LIST } from '../../lib/constants'
 import AddPassportModal from './AddPassportModal'
 import PassportDetail from './PassportDetail'
 
-const STATUS_COLOR = {
-  received:        'bg-blue-500/15 text-blue-400',
-  interview:       'bg-yellow-500/15 text-yellow-400',
-  medical:         'bg-orange-500/15 text-orange-400',
-  police_clearance:'bg-purple-500/15 text-purple-400',
-  bmet:            'bg-cyan-500/15 text-cyan-400',
-  calling_list:    'bg-pink-500/15 text-pink-400',
-  visa_stamping:   'bg-indigo-500/15 text-indigo-400',
-  mofa:            'bg-violet-500/15 text-violet-400',
-  traveling:       'bg-emerald-500/15 text-emerald-400',
-  returned:        'bg-slate-500/15 text-slate-400',
-  cancelled:       'bg-red-500/15 text-red-400',
-}
-
-const STATUSES = ['received','interview','medical','police_clearance','bmet','calling_list','visa_stamping','mofa','traveling','returned','cancelled']
+// STATUS_COLOR and stage list now imported from ../../lib/constants
+const STATUSES = STATUSES_LIST.map(s => s.key)
 const PAGE_SIZE = 20
 
 // FIX: Candidate name search was broken because PostgREST does not support
