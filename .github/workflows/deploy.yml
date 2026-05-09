@@ -16,7 +16,11 @@ jobs:
         working-directory: apps/web
         run: |
           npm install -g pnpm
-          pnpm install --no-frozen-lockfile
+          # FIX: --no-frozen-lockfile was removed. Using --frozen-lockfile ensures
+          # CI installs exactly what is pinned in pnpm-lock.yaml and fails loudly
+          # if the lockfile is out of date, rather than silently installing
+          # different package versions from what was tested locally.
+          pnpm install --frozen-lockfile
       - name: Build
         working-directory: apps/web
         run: pnpm run build
