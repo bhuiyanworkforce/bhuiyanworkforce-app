@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
-import { Bell, Check, CheckCheck, X } from 'lucide-react'
+import { Bell, Check, CheckCheck, X, AlertTriangle } from 'lucide-react'
 
 const TYPE_STYLES = {
   info:    { bg: 'bg-indigo-500/15', text: 'text-indigo-400',  dot: 'bg-indigo-400'  },
@@ -37,6 +37,7 @@ export default function NotificationBell() {
   const [notifications, setNotifications] = useState([])
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [fetchError, setFetchError] = useState(null)
   const [userId, setUserId] = useState(null)
   const [confirmClear, setConfirmClear] = useState(false)
   const panelRef = useRef(null)
@@ -52,7 +53,6 @@ export default function NotificationBell() {
       setUserId(user.id)
       await fetchNotificationsForUser(user.id)
 
-      // Realtime channel handles new inserts — no polling interval needed
       channel = subscribeToNotifications(user.id, (newNotification) => {
         setNotifications(prev => [newNotification, ...prev])
       })
@@ -76,13 +76,24 @@ export default function NotificationBell() {
     return () => document.removeEventListener('mousedown', handleClick)
   }, [])
 
+  // FIX: Previously discarded the error from Supabase, silently showing an
+  // empty list on failure. Now surfaces the error so the user knows something
+  // went wrong instead of thinking there are no notifications.
   async function fetchNotificationsForUser(uid) {
-    const { data } = await supabase
+    setFetchError(null)
+    const { data, error } = await supabase
       .from('notifications')
       .select('*')
       .eq('user_id', uid)
       .order('created_at', { ascending: false })
       .limit(20)
+
+    if (error) {
+      console.error('Failed to fetch notifications:', error)
+      setFetchError('Could not load notifications.')
+      return
+    }
+
     setNotifications(data || [])
   }
 
@@ -92,7 +103,7 @@ export default function NotificationBell() {
   }
 
   async function markAllAsRead() {
-    if (!userId) return
+    if (!userId || loading) return
     setLoading(true)
     await supabase.from('notifications').update({ is_read: true })
       .eq('user_id', userId).eq('is_read', false)
@@ -151,7 +162,19 @@ export default function NotificationBell() {
           </div>
 
           <div className="overflow-y-auto flex-1">
-            {notifications.length === 0 ? (
+            {/* FIX: Show error state when fetch failed */}
+            {fetchError ? (
+              <div className="flex flex-col items-center justify-center py-10 gap-3 text-center px-4">
+                <AlertTriangle size={24} className="text-red-400" />
+                <p className="text-red-400 text-sm">{fetchError}</p>
+                <button
+                  onClick={() => userId && fetchNotificationsForUser(userId)}
+                  className="text-indigo-400 text-xs font-semibold"
+                >
+                  Retry
+                </button>
+              </div>
+            ) : notifications.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-slate-600">
                 <Bell size={28} className="mb-3" />
                 <p className="text-sm">No notifications yet</p>
