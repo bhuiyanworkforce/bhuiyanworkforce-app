@@ -28,7 +28,8 @@ export default function AgentDetail({ agent, onClose }) {
   async function recordPayout() {
     if (!payoutAmount || Number.isNaN(Number(payoutAmount))) return
     setSaving(true)
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { session } } = await supabase.auth.getSession()
+    const user = session?.user
     await supabase.from('agent_payouts').insert({
       agent_id: agent.id,
       amount: Number.parseFloat(payoutAmount),
