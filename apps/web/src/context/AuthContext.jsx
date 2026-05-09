@@ -1,22 +1,38 @@
-import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 
 const AuthContext = createContext(null)
+
+// Read the Supabase session directly from localStorage without ANY network call.
+// Supabase JS v2 stores the session under a key like:
+//   sb-<project-ref>-auth-token
+// This bypasses getSession() which can hang on slow networks.
+function readSessionFromStorage() {
+  try {
+    const key = Object.keys(localStorage).find(k =>
+      k.startsWith('sb-') && k.endsWith('-auth-token')
+    )
+    if (!key) return null
+    const raw = localStorage.getItem(key)
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    // Check token not expired
+    const expiresAt = parsed?.expires_at
+    if (expiresAt && expiresAt < Math.floor(Date.now() / 1000)) {
+      console.warn('[Auth] Stored token expired, will need refresh')
+      return null // expired — fall through to network refresh
+    }
+    return parsed
+  } catch (e) {
+    return null
+  }
+}
 
 export function AuthProvider({ children }) {
   const [user, setUser]           = useState(null)
   const [profile, setProfile]     = useState(null)
   const [loading, setLoading]     = useState(true)
   const [authError, setAuthError] = useState(null)
-  const resolved                  = useRef(false)
-
-  const finish = useCallback((u, p) => {
-    if (resolved.current) return
-    resolved.current = true
-    setUser(u ?? null)
-    setProfile(p ?? null)
-    setLoading(false)
-  }, [])
 
   const fetchProfile = useCallback(async (userId) => {
     try {
@@ -29,60 +45,67 @@ export function AuthProvider({ children }) {
         console.error('[Auth] fetchProfile failed:', error)
         setAuthError('Failed to load profile.')
       }
-      return data ?? null
+      setProfile(data ?? null)
     } catch (err) {
       console.error('[Auth] fetchProfile error:', err)
-      return null
+      setProfile(null)
     }
   }, [])
 
   useEffect(() => {
-    // ── FAST PATH: read session from localStorage immediately, no network ──
-    // getSession() reads the stored session synchronously from localStorage
-    // without making any network call. This resolves instantly even offline.
-    // We use this to unblock the UI immediately, then let onAuthStateChange
-    // handle token refresh in the background.
-    const boot = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession()
-        if (session?.user) {
-          // We have a stored session — show the app immediately
-          // with the stored user, then fetch profile in background
-          setUser(session.user)
-          setLoading(false)  // unblock UI NOW, don't wait for profile
-          const p = await fetchProfile(session.user.id)
-          setProfile(p)
-        } else {
-          finish(null, null)
-        }
-      } catch (err) {
-        console.error('[Auth] boot error:', err)
-        finish(null, null)
-      }
+    // ── INSTANT PATH: read token directly from localStorage ────────────────
+    // No network call. No Supabase SDK. Just parse the stored JSON.
+    // This runs synchronously and unblocks the UI immediately.
+    const storedSession = readSessionFromStorage()
+
+    if (storedSession?.user) {
+      console.log('[Auth] Found stored session, unblocking immediately')
+      setUser(storedSession.user)
+      setLoading(false) // ← unblock UI RIGHT NOW
+      // Fetch profile in background — don't block on it
+      fetchProfile(storedSession.user.id)
     }
 
-    boot()
-
-    // ── Safety net: 15s in case everything above hangs ─────────────────────
+    // ── Safety net: 10s timeout if no stored session ───────────────────────
+    let timedOut = false
     const timeout = setTimeout(() => {
+      timedOut = true
       console.warn('[Auth] Loading timed out — unblocking app')
-      if (!resolved.current) {
-        resolved.current = true
-        setLoading(false)
-      }
-    }, 15000)
+      setLoading(false)
+    }, 10000)
 
-    // ── Background: keep session in sync after initial load ─────────────────
+    // ── Supabase listener: keeps session in sync ───────────────────────────
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (_event, session) => {
-        if (_event === 'INITIAL_SESSION') return // handled by boot() above
+        console.log('[Auth] onAuthStateChange:', _event)
+
+        if (_event === 'INITIAL_SESSION' && storedSession?.user) {
+          // Already handled above — just clear the timeout
+          clearTimeout(timeout)
+          return
+        }
+
         setUser(session?.user ?? null)
+
         if (!session?.user) {
           setProfile(null)
           setAuthError(null)
-        } else if (_event === 'SIGNED_IN' || _event === 'USER_UPDATED') {
-          const p = await fetchProfile(session.user.id)
-          setProfile(p)
+          clearTimeout(timeout)
+          setLoading(false)
+          return
+        }
+
+        if (
+          _event === 'INITIAL_SESSION' ||
+          _event === 'SIGNED_IN' ||
+          _event === 'USER_UPDATED'
+        ) {
+          clearTimeout(timeout)
+          if (!storedSession?.user) {
+            // No stored session — we were waiting on this
+            await fetchProfile(session.user.id)
+            setLoading(false)
+          }
         }
       }
     )
@@ -91,7 +114,7 @@ export function AuthProvider({ children }) {
       clearTimeout(timeout)
       subscription.unsubscribe()
     }
-  }, [fetchProfile, finish])
+  }, [fetchProfile])
 
   const signIn = useCallback(async (email, password) => {
     setAuthError(null)
@@ -102,11 +125,12 @@ export function AuthProvider({ children }) {
 
   const signOut = useCallback(async () => {
     setAuthError(null)
-    resolved.current = false
     setLoading(true)
+    setUser(null)
+    setProfile(null)
     await supabase.auth.signOut()
-    finish(null, null)
-  }, [finish])
+    setLoading(false)
+  }, [])
 
   return (
     <AuthContext.Provider value={{ user, profile, loading, authError, signIn, signOut }}>
