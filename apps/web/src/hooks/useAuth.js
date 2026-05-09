@@ -1,28 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 
-// ─── BUG 3 FIX ───────────────────────────────────────────────────────────────
-// signIn and signOut were defined at module scope, outside the hook.
-// Problems this caused:
-//   1. They were re-exported from inside useAuth() but defined outside it,
-//      meaning they can never trigger React state updates (no access to setUser
-//      etc.) — the auth state change listener handles that separately, but it
-//      was an inconsistency that made the code fragile.
-//   2. signIn was never used anywhere in the app (callers imported useAuth but
-//      called the module function directly). Moving both into the hook makes the
-//      API surface explicit and consistent: callers destructure from useAuth().
-//   3. fetchProfile swallowed errors silently — on a real DB/network failure it
-//      would set profile to null with no feedback, causing the app to silently
-//      fall back to treating the user as having no role.
-//
-// Fix:
-//   - signIn and signOut defined inside the hook with useCallback so they are
-//     stable references (no unnecessary re-renders for consumers).
-//   - fetchProfile now returns a boolean success flag and logs clearly.
-//   - A new `authError` state is exposed so the Login screen can surface
-//     auth failures without managing its own error state.
-// ─────────────────────────────────────────────────────────────────────────────
-
 export function useAuth() {
   const [user, setUser] = useState(null)
   const [profile, setProfile] = useState(null)
@@ -63,33 +41,59 @@ export function useAuth() {
       setProfile(null)
       return false
     } finally {
+      // Always unblock the app — this is the single source of truth for
+      // transitioning out of the initial loading state.
       setLoading(false)
     }
   }, [])
 
   // ── Auth state listener ─────────────────────────────────────────────────────
   useEffect(() => {
-    // Hydrate from existing session on mount
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null)
-      if (session?.user) {
-        fetchProfile(session.user.id)
-      } else {
+    // FIX 1: getSession() previously had no .catch(). If Supabase was
+    // unreachable (network error, bad env vars, cold-start timeout), the
+    // promise rejected, .then() never ran, setLoading(false) was never called,
+    // and the app was frozen on the spinner indefinitely.
+    supabase.auth.getSession()
+      .then(({ data: { session } }) => {
+        setUser(session?.user ?? null)
+        if (session?.user) {
+          // fetchProfile calls setLoading(false) in its finally block
+          fetchProfile(session.user.id)
+        } else {
+          setLoading(false)
+        }
+      })
+      .catch((err) => {
+        // Network failure, invalid env vars, or Supabase outage.
+        // Log it and unblock the app so the user sees something actionable.
+        console.error('[useAuth] getSession failed:', err)
+        setAuthError('Unable to reach the server. Check your connection.')
         setLoading(false)
-      }
-    })
+      })
 
-    // Listen for sign-in / sign-out / token-refresh events.
-    // TOKEN_REFRESHED fires every ~60 minutes — skipping fetchProfile on it
-    // avoids an unnecessary round-trip to the profiles table on each refresh.
+    // FIX 2: Previously only SIGNED_IN and USER_UPDATED triggered fetchProfile.
+    // Supabase v2 fires INITIAL_SESSION (not SIGNED_IN) when restoring a
+    // persisted session on page load. If getSession() above succeeded and set
+    // loading=false that's fine, but if it raced or failed, INITIAL_SESSION
+    // was silently dropped and loading stayed true.
+    //
+    // Adding INITIAL_SESSION here means a persisted session is always handled
+    // correctly regardless of the getSession() race outcome.
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (_event, session) => {
         setUser(session?.user ?? null)
+
         if (session?.user) {
-          if (_event === 'SIGNED_IN' || _event === 'USER_UPDATED') {
+          if (
+            _event === 'INITIAL_SESSION' ||
+            _event === 'SIGNED_IN' ||
+            _event === 'USER_UPDATED'
+          ) {
             await fetchProfile(session.user.id)
           }
+          // TOKEN_REFRESHED fires every ~60 min — skip the profile round-trip
         } else {
+          // Signed out or session expired
           setProfile(null)
           setAuthError(null)
           setLoading(false)
@@ -101,7 +105,6 @@ export function useAuth() {
   }, [fetchProfile])
 
   // ── signIn ──────────────────────────────────────────────────────────────────
-  // Defined inside the hook so it has access to setAuthError.
   // Returns { error } so callers can react to failures.
   const signIn = useCallback(async (email, password) => {
     setAuthError(null)
@@ -116,7 +119,7 @@ export function useAuth() {
   const signOut = useCallback(async () => {
     setAuthError(null)
     await supabase.auth.signOut()
-    // onAuthStateChange fires immediately and clears user/profile above
+    // onAuthStateChange fires immediately and clears user/profile/loading above
   }, [])
 
   return { user, profile, loading, authError, signIn, signOut }
