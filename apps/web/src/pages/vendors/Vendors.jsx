@@ -2,6 +2,7 @@ import PropTypes from 'prop-types'
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { Plus, Search, Building2, X, ChevronRight, AlertTriangle, RefreshCw } from 'lucide-react'
+import Modal from '../../components/Modal'
 
 const VCATEGORIES = ['general','embassy','medical','travel','printing','bank','other']
 
@@ -20,48 +21,42 @@ function AddVendorModal({ onClose, onSaved }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/70 flex items-end justify-center">
-      <div className="bg-[#0D1626] border border-slate-800 rounded-t-2xl w-full max-w-lg max-h-[82vh] overflow-y-auto mb-16">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800 sticky top-0 bg-[#0D1626]">
-          <h2 className="text-slate-100 font-bold text-lg">Add Vendor</h2>
-          <button type="button" onClick={onClose}><X size={20} className="text-slate-400"/></button>
+    <Modal open onClose={onClose} title="Add Vendor" maxWidth="max-w-lg">
+      <div className="p-5 pb-10 flex flex-col gap-4">
+        {error && <p className="text-red-400 text-sm bg-red-500/10 px-4 py-2 rounded-xl">{error}</p>}
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-slate-500 font-semibold">Name *</span>
+          <input value={form.name} onChange={e=>set('name',e.target.value)} placeholder="Vendor / Company name" className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500"/>
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-slate-500 font-semibold">Category</span>
+          <select value={form.category} onChange={e=>set('category',e.target.value)} className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500">
+            {VCATEGORIES.map(c=><option key={c} value={c}>{c}</option>)}
+          </select>
+        </label>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="flex flex-col gap-1">
+            <span className="text-xs text-slate-500 font-semibold">Phone</span>
+            <input value={form.phone} onChange={e=>set('phone',e.target.value)} placeholder="01XXXXXXXXX" className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500"/>
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-xs text-slate-500 font-semibold">Email</span>
+            <input value={form.email} onChange={e=>set('email',e.target.value)} placeholder="Optional" className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500"/>
+          </label>
         </div>
-        <div className="p-5 pb-10 flex flex-col gap-4">
-          {error && <p className="text-red-400 text-sm bg-red-500/10 px-4 py-2 rounded-xl">{error}</p>}
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-slate-500 font-semibold">Name *</span>
-            <input value={form.name} onChange={e=>set('name',e.target.value)} placeholder="Vendor / Company name" className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500"/>
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-slate-500 font-semibold">Category</span>
-            <select value={form.category} onChange={e=>set('category',e.target.value)} className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500">
-              {VCATEGORIES.map(c=><option key={c} value={c}>{c}</option>)}
-            </select>
-          </label>
-          <div className="grid grid-cols-2 gap-3">
-            <label className="flex flex-col gap-1">
-              <span className="text-xs text-slate-500 font-semibold">Phone</span>
-              <input value={form.phone} onChange={e=>set('phone',e.target.value)} placeholder="01XXXXXXXXX" className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500"/>
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-xs text-slate-500 font-semibold">Email</span>
-              <input value={form.email} onChange={e=>set('email',e.target.value)} placeholder="Optional" className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500"/>
-            </label>
-          </div>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-slate-500 font-semibold">Address</span>
-            <input value={form.address} onChange={e=>set('address',e.target.value)} placeholder="Optional" className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500"/>
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-slate-500 font-semibold">Notes</span>
-            <textarea value={form.notes} onChange={e=>set('notes',e.target.value)} rows={2} placeholder="Optional" className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500 resize-none"/>
-          </label>
-          <button type="button" onClick={handleSave} disabled={saving} className="w-full bg-gradient-to-r from-cyan-500 to-blue-600 text-white py-3 rounded-xl font-bold text-sm mt-1 disabled:opacity-50">
-            {saving ? 'Saving…' : 'Add Vendor'}
-          </button>
-        </div>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-slate-500 font-semibold">Address</span>
+          <input value={form.address} onChange={e=>set('address',e.target.value)} placeholder="Optional" className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500"/>
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-slate-500 font-semibold">Notes</span>
+          <textarea value={form.notes} onChange={e=>set('notes',e.target.value)} rows={2} placeholder="Optional" className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500 resize-none"/>
+        </label>
+        <button type="button" onClick={handleSave} disabled={saving} className="w-full bg-gradient-to-r from-cyan-500 to-blue-600 text-white py-3 rounded-xl font-bold text-sm mt-1 disabled:opacity-50">
+          {saving ? 'Saving…' : 'Add Vendor'}
+        </button>
       </div>
-    </div>
+    </Modal>
   )
 }
 
