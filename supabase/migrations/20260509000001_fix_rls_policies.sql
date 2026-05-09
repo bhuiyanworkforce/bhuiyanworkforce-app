@@ -58,7 +58,7 @@ CREATE POLICY "loans: agent read own"
   ON public.loans FOR SELECT
   USING (
     auth.user_role() = 'agent'
-    AND agent_id = (SELECT id FROM public.agents WHERE user_id = auth.uid() LIMIT 1)
+    AND agent_id = (SELECT id FROM public.agents WHERE profile_id = auth.uid() LIMIT 1)
   );
 
 -- ── loan_repayments ──────────────────────────────────────────
@@ -75,7 +75,7 @@ CREATE POLICY "loan_repayments: agent read own"
     auth.user_role() = 'agent'
     AND loan_id IN (
       SELECT id FROM public.loans
-      WHERE agent_id = (SELECT id FROM public.agents WHERE user_id = auth.uid() LIMIT 1)
+      WHERE agent_id = (SELECT id FROM public.agents WHERE profile_id = auth.uid() LIMIT 1)
     )
   );
 
@@ -124,7 +124,7 @@ CREATE POLICY "agent_payouts: agent read own"
   ON public.agent_payouts FOR SELECT
   USING (
     auth.user_role() = 'agent'
-    AND agent_id = (SELECT id FROM public.agents WHERE user_id = auth.uid() LIMIT 1)
+    AND agent_id = (SELECT id FROM public.agents WHERE profile_id = auth.uid() LIMIT 1)
   );
 
 -- ── money_receipts ───────────────────────────────────────────
@@ -168,7 +168,7 @@ CREATE POLICY "candidates: agent read assigned"
   ON public.candidates FOR SELECT
   USING (
     auth.user_role() = 'agent'
-    AND agent_id = (SELECT id FROM public.agents WHERE user_id = auth.uid() LIMIT 1)
+    AND agent_id = (SELECT id FROM public.agents WHERE profile_id = auth.uid() LIMIT 1)
   );
 
 -- ── passports ────────────────────────────────────────────────
@@ -185,7 +185,7 @@ CREATE POLICY "passports: agent read assigned"
     auth.user_role() = 'agent'
     AND candidate_id IN (
       SELECT id FROM public.candidates
-      WHERE agent_id = (SELECT id FROM public.agents WHERE user_id = auth.uid() LIMIT 1)
+      WHERE agent_id = (SELECT id FROM public.agents WHERE profile_id = auth.uid() LIMIT 1)
     )
   );
 
@@ -203,7 +203,7 @@ CREATE POLICY "visa_applications: agent read assigned"
     auth.user_role() = 'agent'
     AND candidate_id IN (
       SELECT id FROM public.candidates
-      WHERE agent_id = (SELECT id FROM public.agents WHERE user_id = auth.uid() LIMIT 1)
+      WHERE agent_id = (SELECT id FROM public.agents WHERE profile_id = auth.uid() LIMIT 1)
     )
   );
 
@@ -219,7 +219,7 @@ CREATE POLICY "invoices: agent read own"
   ON public.invoices FOR SELECT
   USING (
     auth.user_role() = 'agent'
-    AND agent_id = (SELECT id FROM public.agents WHERE user_id = auth.uid() LIMIT 1)
+    AND agent_id = (SELECT id FROM public.agents WHERE profile_id = auth.uid() LIMIT 1)
   );
 
 ALTER TABLE public.invoice_items ENABLE ROW LEVEL SECURITY;
@@ -234,7 +234,7 @@ CREATE POLICY "invoice_items: agent read own invoices"
   USING (
     invoice_id IN (
       SELECT id FROM public.invoices
-      WHERE agent_id = (SELECT id FROM public.agents WHERE user_id = auth.uid() LIMIT 1)
+      WHERE agent_id = (SELECT id FROM public.agents WHERE profile_id = auth.uid() LIMIT 1)
     )
   );
 
