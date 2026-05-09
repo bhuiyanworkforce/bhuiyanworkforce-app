@@ -511,23 +511,35 @@ export default function Payroll() {
 
   async function fetchAgentPayrolls() {
     setAgentLoading(true);
-    const { data, error } = await supabase.from("payroll")
-      .select("*, agents(full_name)")
-      .order("period_start", { ascending: false });
-    if (error) console.error(error.message);
-    setAgentPayrolls(data || []);
-    setAgentLoading(false);
+    try {
+      const { data, error } = await supabase.from("payroll")
+        .select("*, agents(full_name)")
+        .order("period_start", { ascending: false });
+      if (error) throw error;
+      setAgentPayrolls(data || []);
+    } catch (err) {
+      console.error('[Payroll] fetchAgentPayrolls failed:', err);
+      setAgentPayrolls([]);
+    } finally {
+      setAgentLoading(false);
+    }
   }
 
   async function fetchEmpPayrolls() {
     setEmpLoading(true);
-    const { data, error } = await supabase.from("employee_payroll")
-      .select("*, employees(name, role)")
-      .order("year", { ascending: false })
-      .order("month", { ascending: false });
-    if (error) console.error(error.message);
-    setEmpPayrolls(data || []);
-    setEmpLoading(false);
+    try {
+      const { data, error } = await supabase.from("employee_payroll")
+        .select("*, employees(name, role)")
+        .order("year", { ascending: false })
+        .order("month", { ascending: false });
+      if (error) throw error;
+      setEmpPayrolls(data || []);
+    } catch (err) {
+      console.error('[Payroll] fetchEmpPayrolls failed:', err);
+      setEmpPayrolls([]);
+    } finally {
+      setEmpLoading(false);
+    }
   }
 
   const filteredAgent = agentFilter === "all" ? agentPayrolls : agentPayrolls.filter(p => p.status === agentFilter);
