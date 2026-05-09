@@ -32,7 +32,10 @@ export default function GlobalSearch() {
   async function search(q) {
     setLoading(true)
     setSearchError(null)
-    const term = `%${q}%`
+    // Escape PostgREST ilike special characters so user input like "%" or "_"
+    // is treated as a literal character, not a wildcard pattern.
+    const safe = q.replace(/[%_\\]/g, '\\$&')
+    const term = `%${safe}%`
 
     try {
       const [
