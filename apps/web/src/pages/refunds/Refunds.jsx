@@ -2,6 +2,7 @@ import PropTypes from 'prop-types'
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import { Plus, X, ChevronRight, AlertTriangle, RefreshCw } from 'lucide-react'
+import Modal from '../../components/Modal'
 
 const STATUS_COLOR = {
   pending:  'bg-amber-500/15 text-amber-400',
@@ -53,55 +54,49 @@ function AddRefundModal({ onClose, onSaved }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/70 flex items-end justify-center">
-      <div className="bg-[#0D1626] border border-slate-800 rounded-t-2xl w-full max-w-lg max-h-[85vh] overflow-y-auto">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800 sticky top-0 bg-[#0D1626]">
-          <h2 className="text-slate-100 font-bold text-lg">New Refund</h2>
-          <button onClick={onClose}><X size={20} className="text-slate-400"/></button>
-        </div>
-        <div className="p-5 pb-24 flex flex-col gap-4">
-          {error && <p className="text-red-400 text-sm bg-red-500/10 px-4 py-2 rounded-xl">{error}</p>}
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-slate-500 font-semibold">Candidate</span>
-            <select value={form.candidate_id} onChange={e => set('candidate_id', e.target.value)} className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500">
-              <option value="">— Select candidate —</option>
-              {candidates.map(c => <option key={c.id} value={c.id}>{c.full_name}</option>)}
-            </select>
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-slate-500 font-semibold">Invoice (optional)</span>
-            <select value={form.invoice_id} onChange={e => set('invoice_id', e.target.value)} className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500">
-              <option value="">— No invoice —</option>
-              {invoices.map(inv => <option key={inv.id} value={inv.id}>{inv.invoice_no} — ৳{Number.parseFloat(inv.total||0).toLocaleString()}</option>)}
-            </select>
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-slate-500 font-semibold">Amount (৳) *</span>
-            <input type="number" min="0" value={form.amount} onChange={e => set('amount', e.target.value)} placeholder="0" className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500"/>
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-slate-500 font-semibold">Reason *</span>
-            <input value={form.reason} onChange={e => set('reason', e.target.value)} placeholder="Reason for refund" className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500"/>
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-slate-500 font-semibold">Date</span>
-            <input type="date" value={form.refund_date} onChange={e => set('refund_date', e.target.value)} className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500"/>
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-slate-500 font-semibold">Payment Method</span>
-            <select value={form.payment_method} onChange={e => set('payment_method', e.target.value)} className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500">
-              <option value="cash">Cash</option>
-              <option value="bank">Bank Transfer</option>
-              <option value="mobile_banking">Mobile Banking</option>
-              <option value="cheque">Cheque</option>
-            </select>
-          </label>
-          <button onClick={handleSave} disabled={loading} className="w-full bg-gradient-to-r from-red-500 to-rose-600 text-white py-3 rounded-xl font-bold text-sm disabled:opacity-50">
-            {loading ? 'Saving…' : 'Create Refund'}
-          </button>
-        </div>
+    <Modal open onClose={onClose} title="New Refund" maxWidth="max-w-lg">
+      <div className="p-5 pb-10 flex flex-col gap-4">
+        {error && <p className="text-red-400 text-sm bg-red-500/10 px-4 py-2 rounded-xl">{error}</p>}
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-slate-500 font-semibold">Candidate</span>
+          <select value={form.candidate_id} onChange={e => set('candidate_id', e.target.value)} className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500">
+            <option value="">— Select candidate —</option>
+            {candidates.map(c => <option key={c.id} value={c.id}>{c.full_name}</option>)}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-slate-500 font-semibold">Invoice (optional)</span>
+          <select value={form.invoice_id} onChange={e => set('invoice_id', e.target.value)} className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500">
+            <option value="">— No invoice —</option>
+            {invoices.map(inv => <option key={inv.id} value={inv.id}>{inv.invoice_no} — ৳{Number.parseFloat(inv.total||0).toLocaleString()}</option>)}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-slate-500 font-semibold">Amount (৳) *</span>
+          <input type="number" min="0" value={form.amount} onChange={e => set('amount', e.target.value)} placeholder="0" className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500"/>
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-slate-500 font-semibold">Reason *</span>
+          <input value={form.reason} onChange={e => set('reason', e.target.value)} placeholder="Reason for refund" className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500"/>
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-slate-500 font-semibold">Date</span>
+          <input type="date" value={form.refund_date} onChange={e => set('refund_date', e.target.value)} className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500"/>
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-slate-500 font-semibold">Payment Method</span>
+          <select value={form.payment_method} onChange={e => set('payment_method', e.target.value)} className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500">
+            <option value="cash">Cash</option>
+            <option value="bank">Bank Transfer</option>
+            <option value="mobile_banking">Mobile Banking</option>
+            <option value="cheque">Cheque</option>
+          </select>
+        </label>
+        <button onClick={handleSave} disabled={loading} className="w-full bg-gradient-to-r from-red-500 to-rose-600 text-white py-3 rounded-xl font-bold text-sm disabled:opacity-50">
+          {loading ? 'Saving…' : 'Create Refund'}
+        </button>
       </div>
-    </div>
+    </Modal>
   )
 }
 
