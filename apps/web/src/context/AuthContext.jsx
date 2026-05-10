@@ -35,7 +35,7 @@ export function AuthProvider({ children }) {
   const [loading, setLoading]     = useState(true)
   const [authError, setAuthError] = useState(null)
 
-  const fetchProfile = useCallback(async (userId) => {
+  const fetchProfile = useCallback(async (userId, attempt = 0) => {
     try {
       const { data, error } = await supabase
         .from('profiles')
@@ -43,12 +43,25 @@ export function AuthProvider({ children }) {
         .eq('id', userId)
         .single()
       if (error && error.code !== 'PGRST116') {
-        console.error('[Auth] fetchProfile failed:', error)
+        // FIX: Previously a transient network error here would leave profile=null
+        // for the entire session with no retry. Now we retry once (after 2s) so
+        // a single blip doesn't permanently break profile-dependent UI.
+        if (attempt === 0) {
+          console.warn('[Auth] fetchProfile failed, retrying in 2s:', error)
+          setTimeout(() => fetchProfile(userId, 1), 2000)
+          return
+        }
+        console.error('[Auth] fetchProfile failed after retry:', error)
         setAuthError('Failed to load profile.')
       }
       setProfile(data ?? null)
     } catch (err) {
-      console.error('[Auth] fetchProfile error:', err)
+      if (attempt === 0) {
+        console.warn('[Auth] fetchProfile error, retrying in 2s:', err)
+        setTimeout(() => fetchProfile(userId, 1), 2000)
+        return
+      }
+      console.error('[Auth] fetchProfile error after retry:', err)
       setProfile(null)
     }
   }, [])
