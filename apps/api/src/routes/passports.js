@@ -56,10 +56,12 @@ async function checkRateLimit(env, userId) {
     return { allowed: false, retryAfter: RATE_LIMIT_WINDOW }
   }
 
-  // Increment counter; set TTL only on first request so the window is fixed
-  await env.RATE_LIMIT_KV.put(key, String(count + 1), {
-    expirationTtl: RATE_LIMIT_WINDOW,
-  })
+  // Increment counter; set TTL only on first request so the window is fixed.
+  // If we set expirationTtl on every put(), the window resets on each call —
+  // meaning a user could make 9 requests every 59 seconds indefinitely.
+  await env.RATE_LIMIT_KV.put(key, String(count + 1),
+    count === 0 ? { expirationTtl: RATE_LIMIT_WINDOW } : undefined
+  )
 
   return { allowed: true }
 }
@@ -109,8 +111,9 @@ app.post('/status-update', async (c) => {
 
     const supabase = getSupabase(c.env)
 
+    // phone removed — fetched but never used
     const { data: passport } = await supabase.from('passports')
-      .select('passport_no, status, candidates(full_name, phone, agents(full_name, email, profile_id))')
+      .select('passport_no, status, candidates(full_name, agents(full_name, email, profile_id))')
       .eq('id', passport_id).single()
 
     if (!passport) return c.json({ error: 'Passport not found' }, 404)
@@ -118,14 +121,9 @@ app.post('/status-update', async (c) => {
     const candidate = passport.candidates
     const agent = candidate?.agents
 
-    await supabase.from('passport_workflow_logs').insert({
-      passport_id, from_status: passport.status, to_status: new_status,
-      note: note || null, changed_by: user.id,
-    })
-
-    // FIX: Check that the status update actually succeeded before sending email.
-    // Previously the email fired even if the DB update failed, sending agents
-    // a status-change notification for a change that never happened.
+    // FIX: Update the passport FIRST, then log — so the log only exists if the
+    // update actually succeeded. Previously the log was inserted before the update,
+    // creating phantom log entries for changes that never happened.
     const { error: updateError } = await supabase
       .from('passports')
       .update({ status: new_status })
@@ -134,6 +132,11 @@ app.post('/status-update', async (c) => {
     if (updateError) {
       return c.json({ error: `Failed to update passport status: ${updateError.message}` }, 500)
     }
+
+    await supabase.from('passport_workflow_logs').insert({
+      passport_id, from_status: passport.status, to_status: new_status,
+      note: note || null, changed_by: user.id,
+    })
 
     if (agent?.email) {
       const statusLabel = new_status.replaceAll('_', ' ').replace(/\b\w/g, l => l.toUpperCase())
