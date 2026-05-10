@@ -68,22 +68,31 @@ class ErrorBoundary extends Component {
 // ── Lazy pages with chunk-error retry ─────────────────────────────────────────
 // If a hashed chunk returns 404 (stale SW cache after redeployment), we reload
 // the page once automatically so the user gets fresh chunks silently.
+//
+// FIX: Previously a single shared key 'chunk_reload' was used across all routes.
+// If Route A's chunk failed and set the flag, Route B's chunk failure would find
+// the flag already set and skip the reload — showing a blank screen instead of
+// recovering. Now each import path gets its own key so every route can retry
+// independently.
 function lazyWithRetry(importFn) {
+  // Derive a stable short key from the import function's source string.
+  // e.g. () => import('./pages/dashboard/Dashboard') → 'dashboard/Dashboard'
+  const routeKey = importFn.toString().match(/['"]([^'"]+)['"]/)?.[1] ?? importFn.toString()
+  const storageKey = `chunk_reload:${routeKey}`
+
   return lazy(() =>
     importFn()
       .then(module => {
-        // Chunk loaded successfully — clear the reload flag so that a future
-        // stale-chunk error on a different route can still trigger a reload.
-        // Without this, the flag from one bad chunk permanently disables
-        // auto-retry for the rest of the session.
-        sessionStorage.removeItem('chunk_reload')
+        // Chunk loaded successfully — clear this route's reload flag so a
+        // future stale-chunk error on this route can still trigger a reload.
+        sessionStorage.removeItem(storageKey)
         return module
       })
       .catch(() => {
         // Chunk failed to load — force a full page reload to bust the SW cache.
-        // Add a flag so we don't reload-loop if the chunk is genuinely broken.
-        if (!sessionStorage.getItem('chunk_reload')) {
-          sessionStorage.setItem('chunk_reload', '1')
+        // Add a per-route flag so we don't reload-loop if the chunk is broken.
+        if (!sessionStorage.getItem(storageKey)) {
+          sessionStorage.setItem(storageKey, '1')
           window.location.reload()
         }
         // Return a dummy module so React doesn't crash before the reload fires
