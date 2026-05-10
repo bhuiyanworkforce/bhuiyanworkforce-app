@@ -1,0 +1,24 @@
+name = "bhuiyanworkforce-api"
+main = "src/index.js"
+compatibility_date = "2025-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+ENVIRONMENT = "production"
+CORS_ORIGIN = "https://app.bhuiyanworkforce.com"
+API_URL     = "https://api.bhuiyanworkforce.com"
+
+# Secrets added via Cloudflare dashboard (wrangler secret put <NAME>):
+# SUPABASE_URL
+# SUPABASE_SERVICE_KEY
+# SUPABASE_ANON_KEY
+# RESEND_API_KEY
+# INTERNAL_SECRET
+
+# NOTE: Rate limiting (RATE_LIMIT_KV) is not configured here.
+# To enable it later, create a KV namespace via the Cloudflare dashboard:
+#   Workers & Pages → KV → Create namespace → copy the ID
+# Then add:
+#   [[kv_namespaces]]
+#   binding = "RATE_LIMIT_KV"
+#   id      = "<your-namespace-id>"

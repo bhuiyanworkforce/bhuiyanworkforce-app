@@ -1,0 +1,296 @@
+import { useState, useEffect, useRef } from 'react'
+import { supabase } from '../lib/supabase'
+import { Search, X, User, Stamp, FileText, Wallet, ChevronRight, AlertTriangle } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+
+const RESULT_TYPES = {
+  candidate: { icon: User,     color: 'text-emerald-400', bg: 'bg-emerald-500/15', label: 'Candidate' },
+  passport:  { icon: Stamp,    color: 'text-indigo-400',  bg: 'bg-indigo-500/15',  label: 'Passport'  },
+  visa:      { icon: FileText, color: 'text-amber-400',   bg: 'bg-amber-500/15',   label: 'Visa'      },
+  invoice:   { icon: Wallet,   color: 'text-pink-400',    bg: 'bg-pink-500/15',    label: 'Invoice'   },
+}
+
+export default function GlobalSearch() {
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const [results, setResults] = useState([])
+  const [loading, setLoading] = useState(false)
+  const [searchError, setSearchError] = useState(null)
+  const [activeIndex, setActiveIndex] = useState(-1)
+  const inputRef = useRef(null)
+  const resultRefs = useRef([])
+  const navigate = useNavigate()
+
+  useEffect(() => {
+    if (open) setTimeout(() => inputRef.current?.focus(), 100)
+  }, [open])
+
+  useEffect(() => {
+    setActiveIndex(-1)
+    resultRefs.current = []
+  }, [results])
+
+  useEffect(() => {
+    if (!query.trim()) { setResults([]); setSearchError(null); return }
+    const timeout = setTimeout(() => search(query), 300)
+    return () => clearTimeout(timeout)
+  }, [query])
+
+  async function search(q) {
+    setLoading(true)
+    setSearchError(null)
+    // Escape PostgREST ilike special characters so user input like "%" or "_"
+    // is treated as a literal character, not a wildcard pattern.
+    const safe = q.replace(/[%_\\]/g, String.raw`\$&`)
+    const term = `%${safe}%`
+
+    try {
+      // FIX: allSettled so one failing source (e.g. RLS on invoices) doesn't
+      // wipe candidates/passports/visa results. Your error UI + retry button
+      // below are preserved — they now fire only when ALL sources fail.
+      const [r0, r1, r2, r3] = await Promise.allSettled([
+        supabase.from('candidates')
+          .select('id, full_name, phone, nationality')
+          .or(`full_name.ilike.${term},phone.ilike.${term}`)
+          .limit(4),
+        supabase.from('passports')
+          .select('id, passport_no, status, candidates(full_name)')
+          .or(`passport_no.ilike.${term}`)
+          .limit(4),
+        supabase.from('visa_applications')
+          .select('id, visa_type, country, status, candidates(full_name)')
+          .or(`visa_type.ilike.${term},country.ilike.${term}`)
+          .limit(3),
+        supabase.from('invoices')
+          .select('id, invoice_no, total, status, candidates(full_name)')
+          .or(`invoice_no.ilike.${term}`)
+          .limit(3),
+      ])
+
+      const candidates = (r0.status === 'fulfilled' && !r0.value.error) ? (r0.value.data || []) : []
+      const passports  = (r1.status === 'fulfilled' && !r1.value.error) ? (r1.value.data || []) : []
+      const visas      = (r2.status === 'fulfilled' && !r2.value.error) ? (r2.value.data || []) : []
+      const invoices   = (r3.status === 'fulfilled' && !r3.value.error) ? (r3.value.data || []) : []
+
+      const allFailed = [r0, r1, r2, r3].every(
+        r => r.status === 'rejected' || (r.status === 'fulfilled' && r.value.error)
+      )
+      if (allFailed) throw new Error('All search sources failed')
+
+      const all = [
+        ...(candidates || []).map(c => ({
+          id: c.id, type: 'candidate',
+          title: c.full_name,
+          subtitle: `${c.phone || ''} · ${c.nationality || ''}`,
+          path: '/candidates',
+          data: c,
+        })),
+        ...(passports || []).map(p => ({
+          id: p.id, type: 'passport',
+          title: p.passport_no,
+          subtitle: `${p.candidates?.full_name} · ${p.status?.replaceAll('_', ' ')}`,
+          path: '/passports',
+          data: p,
+        })),
+        ...(visas || []).map(v => ({
+          id: v.id, type: 'visa',
+          title: `${v.visa_type || 'Visa'} — ${v.country || ''}`,
+          subtitle: `${v.candidates?.full_name} · ${v.status?.replaceAll('_', ' ')}`,
+          path: '/visa',
+          data: v,
+        })),
+        ...(invoices || []).map(i => ({
+          id: i.id, type: 'invoice',
+          title: i.invoice_no,
+          subtitle: `${i.candidates?.full_name} · ৳${Number.parseFloat(i.total||0).toLocaleString()} · ${i.status}`,
+          path: '/accounts',
+          data: i,
+        })),
+      ]
+
+      setResults(all)
+    } catch (err) {
+      console.error('GlobalSearch error:', err)
+      setSearchError('Search failed. Check your connection and try again.')
+      setResults([])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  function handleSelect(result) {
+    navigate(result.path, { state: { openId: result.id, openData: result.data } })
+    setOpen(false)
+    setQuery('')
+    setResults([])
+  }
+
+  // Flatten results in display order for keyboard nav
+  const flatResults = ['candidate','passport','visa','invoice'].flatMap(type =>
+    results.filter(r => r.type === type)
+  )
+
+  function handleKeyDown(e) {
+    if (!results.length) return
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setActiveIndex(prev => {
+        const next = Math.min(prev + 1, flatResults.length - 1)
+        resultRefs.current[next]?.scrollIntoView({ block: 'nearest' })
+        return next
+      })
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setActiveIndex(prev => {
+        const next = Math.max(prev - 1, 0)
+        resultRefs.current[next]?.scrollIntoView({ block: 'nearest' })
+        return next
+      })
+    } else if (e.key === 'Enter' && activeIndex >= 0) {
+      e.preventDefault()
+      handleSelect(flatResults[activeIndex])
+    } else if (e.key === 'Escape') {
+      handleClose()
+    }
+  }
+
+  function handleClose() {
+    setOpen(false)
+    setQuery('')
+    setResults([])
+    setSearchError(null)
+  }
+
+  return (
+    <>
+      <button
+        onClick={() => setOpen(true)}
+        className="p-2 text-slate-400 hover:text-slate-200 transition-colors"
+        aria-label="Search"
+      >
+        <Search size={20} />
+      </button>
+
+      {open && (
+        <div className="fixed inset-0 z-50 bg-[#050D1A] flex flex-col">
+          <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-800 bg-[#080F1E]">
+            <Search size={18} className="text-slate-500 flex-none" />
+            <input
+              ref={inputRef}
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Search candidates, passports, invoices..."
+              className="flex-1 bg-transparent text-slate-100 text-base placeholder-slate-500 focus:outline-none"
+              aria-label="Search"
+              aria-autocomplete="list"
+              aria-activedescendant={activeIndex >= 0 ? `search-result-${activeIndex}` : undefined}
+            />
+            {query && (
+              <button
+                onClick={() => setQuery('')}
+                className="text-slate-500 hover:text-slate-300 flex-none"
+              >
+                <X size={18} />
+              </button>
+            )}
+            <button
+              onClick={handleClose}
+              className="text-indigo-400 text-sm font-semibold flex-none ml-1"
+            >
+              Cancel
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-4">
+            {!query && (
+              <div className="flex flex-col items-center justify-center h-48 text-slate-600">
+                <Search size={40} className="mb-4 opacity-30" />
+                <p className="text-sm">Search across all records</p>
+                <p className="text-xs mt-1 text-slate-700">Candidates · Passports · Visa · Invoices</p>
+              </div>
+            )}
+
+            {query && loading && (
+              <div className="flex justify-center py-12">
+                <div className="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+              </div>
+            )}
+
+            {query && !loading && searchError && (
+              <div className="flex flex-col items-center justify-center h-48 gap-3 text-center">
+                <AlertTriangle size={28} className="text-red-400" />
+                <p className="text-red-400 text-sm">{searchError}</p>
+                <button
+                  onClick={() => search(query)}
+                  className="text-indigo-400 text-xs font-semibold">
+                  Retry
+                </button>
+              </div>
+            )}
+
+            {query && !loading && !searchError && results.length === 0 && (
+              <div className="flex flex-col items-center justify-center h-48 text-slate-600">
+                <p className="text-sm">No results for "<span className="text-slate-400">{query}</span>"</p>
+              </div>
+            )}
+
+            {results.length > 0 && (
+              <div className="flex flex-col gap-2">
+                {['candidate','passport','visa','invoice'].map(type => {
+                  const group = results.filter(r => r.type === type)
+                  if (group.length === 0) return null
+                  const { icon: Icon, color, bg, label } = RESULT_TYPES[type]
+
+                  return (
+                    <div key={type}>
+                      <p className="text-[10px] font-bold text-slate-600 uppercase tracking-widest px-1 mb-2 mt-3">
+                        {label}s
+                      </p>
+                      <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden" role="listbox">
+                        {group.map((result) => {
+                          const flatIdx = flatResults.indexOf(result)
+                          const isActive = flatIdx === activeIndex
+                          // Highlight matched query term in the title
+                          const titleParts = result.title.split(new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`)})`, 'gi'))
+                          return (
+                            <button
+                              key={result.id}
+                              id={`search-result-${flatIdx}`}
+                              ref={el => { resultRefs.current[flatIdx] = el }}
+                              onClick={() => handleSelect(result)}
+                              role="option"
+                              aria-selected={isActive}
+                              className={`w-full flex items-center gap-3 px-4 py-3.5 text-left transition-colors border-b border-slate-800 last:border-b-0 ${
+                                isActive ? 'bg-slate-800' : 'active:bg-slate-800'
+                              }`}
+                            >
+                              <div className={`w-9 h-9 rounded-xl ${bg} flex items-center justify-center flex-none`}>
+                                <Icon size={16} className={color} />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-slate-200 text-sm font-semibold truncate">
+                                  {titleParts.map((part, pi) =>
+                                    part.toLowerCase() === query.toLowerCase()
+                                      ? <mark key={pi} className="bg-indigo-500/30 text-indigo-200 rounded px-0.5">{part}</mark>
+                                      : part
+                                  )}
+                                </p>
+                                <p className="text-slate-500 text-xs truncate capitalize">{result.subtitle}</p>
+                              </div>
+                              <ChevronRight size={16} className="text-slate-600 flex-none" />
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
