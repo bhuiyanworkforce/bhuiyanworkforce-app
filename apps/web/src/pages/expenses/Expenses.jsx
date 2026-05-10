@@ -1,9 +1,9 @@
 import PropTypes from 'prop-types'
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
-import { Plus, Search, TrendingDown } from 'lucide-react'
+import { Plus, Search, TrendingDown, X } from 'lucide-react'
 import { EXPENSE_CATEGORIES as CATEGORIES, EXPENSE_CAT_COLOR as CAT_COLOR } from '../../lib/constants'
-import Modal from '../../components/Modal'
+import { ListSkeleton } from '../../components/Skeleton'
 
 // CATEGORIES and CAT_COLOR are now imported from ../../lib/constants
 
@@ -27,58 +27,64 @@ function AddExpenseModal({ onClose, onSaved }) {
   }
 
   return (
-    <Modal open onClose={onClose} title="Add Expense" maxWidth="max-w-lg">
-      <div className="p-5 pb-10 flex flex-col gap-4">
-        {error && <p className="text-red-400 text-sm bg-red-500/10 px-4 py-2 rounded-xl">{error}</p>}
-        <div className="grid grid-cols-2 gap-3">
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-slate-500 font-semibold">Date</span>
-            <input type="date" value={form.date} onChange={e=>set('date',e.target.value)} className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500" />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-slate-500 font-semibold">Category</span>
-            <select value={form.category} onChange={e=>set('category',e.target.value)} className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500">
-              {CATEGORIES.map(c=><option key={c} value={c}>{c.replaceAll('_',' ')}</option>)}
-            </select>
-          </label>
+    <div className="fixed inset-0 z-50 bg-black/70 flex items-end justify-center">
+      <div className="bg-[#0D1626] border border-slate-800 rounded-t-2xl w-full max-w-lg max-h-[82vh] overflow-y-auto mb-16">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800 sticky top-0 bg-[#0D1626]">
+          <h2 className="text-slate-100 font-bold text-lg">Add Expense</h2>
+          <button onClick={onClose}><X size={20} className="text-slate-400" /></button>
         </div>
-        <label className="flex flex-col gap-1">
-          <span className="text-xs text-slate-500 font-semibold">Description *</span>
-          <input value={form.description} onChange={e=>set('description',e.target.value)} placeholder="What was this for?" className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500" />
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-xs text-slate-500 font-semibold">Amount (৳) *</span>
-          <input type="number" min="0" value={form.amount} onChange={e=>set('amount',e.target.value)} placeholder="0" className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500" />
-        </label>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="p-5 pb-10 flex flex-col gap-4">
+          {error && <p className="text-red-400 text-sm bg-red-500/10 px-4 py-2 rounded-xl">{error}</p>}
+          <div className="grid grid-cols-2 gap-3">
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-slate-500 font-semibold">Date</span>
+              <input type="date" value={form.date} onChange={e=>set('date',e.target.value)} className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500" />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-slate-500 font-semibold">Category</span>
+              <select value={form.category} onChange={e=>set('category',e.target.value)} className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500">
+                {CATEGORIES.map(c=><option key={c} value={c}>{c.replaceAll('_',' ')}</option>)}
+              </select>
+            </label>
+          </div>
           <label className="flex flex-col gap-1">
-            <span className="text-xs text-slate-500 font-semibold">Payment Method</span>
-            <select value={form.payment_method} onChange={e=>set('payment_method',e.target.value)} className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500">
-              <option value="cash">Cash</option>
-              <option value="bank">Bank Transfer</option>
-              <option value="mobile">Mobile Banking</option>
-              <option value="cheque">Cheque</option>
-            </select>
+            <span className="text-xs text-slate-500 font-semibold">Description *</span>
+            <input value={form.description} onChange={e=>set('description',e.target.value)} placeholder="What was this for?" className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500" />
           </label>
           <label className="flex flex-col gap-1">
-            <span className="text-xs text-slate-500 font-semibold">Reference No.</span>
-            <input value={form.reference_no} onChange={e=>set('reference_no',e.target.value)} placeholder="Optional" className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500" />
+            <span className="text-xs text-slate-500 font-semibold">Amount (৳) *</span>
+            <input type="number" min="0" value={form.amount} onChange={e=>set('amount',e.target.value)} placeholder="0" className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500" />
           </label>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-slate-500 font-semibold">Payment Method</span>
+              <select value={form.payment_method} onChange={e=>set('payment_method',e.target.value)} className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500">
+                <option value="cash">Cash</option>
+                <option value="bank">Bank Transfer</option>
+                <option value="mobile">Mobile Banking</option>
+                <option value="cheque">Cheque</option>
+              </select>
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-slate-500 font-semibold">Reference No.</span>
+              <input value={form.reference_no} onChange={e=>set('reference_no',e.target.value)} placeholder="Optional" className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500" />
+            </label>
+          </div>
+          {vendors.length > 0 && (
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-slate-500 font-semibold">Vendor (optional)</span>
+              <select value={form.vendor_id} onChange={e=>set('vendor_id',e.target.value)} className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500">
+                <option value="">— No vendor —</option>
+                {vendors.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}
+              </select>
+            </label>
+          )}
+          <button onClick={handleSave} disabled={saving} className="w-full bg-gradient-to-r from-rose-500 to-pink-600 text-white py-3 rounded-xl font-bold text-sm mt-1 disabled:opacity-50">
+            {saving ? 'Saving…' : 'Save Expense'}
+          </button>
         </div>
-        {vendors.length > 0 && (
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-slate-500 font-semibold">Vendor (optional)</span>
-            <select value={form.vendor_id} onChange={e=>set('vendor_id',e.target.value)} className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500">
-              <option value="">— No vendor —</option>
-              {vendors.map(v=><option key={v.id} value={v.id}>{v.name}</option>)}
-            </select>
-          </label>
-        )}
-        <button onClick={handleSave} disabled={saving} className="w-full bg-gradient-to-r from-rose-500 to-pink-600 text-white py-3 rounded-xl font-bold text-sm mt-1 disabled:opacity-50">
-          {saving ? 'Saving…' : 'Save Expense'}
-        </button>
       </div>
-    </Modal>
+    </div>
   )
 }
 
@@ -135,7 +141,7 @@ export default function Expenses() {
         <label htmlFor="expense-search" className="sr-only">Search expenses</label>
         <input id="expense-search" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search expenses..." className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-9 pr-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500"/>
       </div>
-      {loading ? <div className="flex justify-center py-12"><div className="w-8 h-8 border-2 border-rose-500 border-t-transparent rounded-full animate-spin"/></div> : (
+      {loading ? <ListSkeleton rows={6} hasSearch={false} hasTabs={false} /> : (
         <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
           {filtered.length === 0 ? <p className="text-center text-slate-600 py-12 text-sm">No expenses found</p> : (
             <ul>{filtered.map((e,i)=>(
