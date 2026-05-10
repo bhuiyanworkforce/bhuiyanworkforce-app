@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { createClient } from '@supabase/supabase-js'
+import { escHtml } from '../lib/emailUtils.js'
 
 const app = new Hono()
 
@@ -64,15 +65,6 @@ async function checkRateLimit(env, userId) {
   )
 
   return { allowed: true }
-}
-
-function escHtml(s) {
-  return String(s ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;')
 }
 
 async function sendEmail(env, { to, subject, html }) {
