@@ -2,6 +2,7 @@ import PropTypes from 'prop-types'
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import { X, Download, CheckCircle, Pencil, XCircle, Plus } from 'lucide-react'
+import { Spinner } from '../../components/Skeleton'
 
 const PAYMENT_METHODS = ['cash', 'bank_transfer', 'cheque', 'bkash', 'nagad', 'other']
 
@@ -261,7 +262,7 @@ export default function InvoiceDetail({ invoice: initialInvoice, onClose, onUpda
             <h3 className="text-sm font-bold text-slate-300">Items</h3>
           </div>
           {loading ? (
-            <div className="flex justify-center py-8"><div className="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" /></div>
+            <Spinner size="w-6 h-6" />
           ) : (
             <ul>
               {items.map((item, i) => (
