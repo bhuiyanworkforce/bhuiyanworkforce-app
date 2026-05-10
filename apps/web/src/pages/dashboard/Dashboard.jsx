@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import { PASSPORT_WORKFLOW_STAGES as WORKFLOW_STAGES } from '../../lib/constants'
 import { safeFloat } from '../../lib/utils'
+import { DashboardSkeleton } from '../../components/Skeleton'
 
 // FIX: Helper to safely unwrap a Promise.allSettled result.
 // Returns the value on fulfillment, or the fallback on rejection.
@@ -138,11 +139,7 @@ export default function Dashboard() {
 
   const maxCount = Math.max(...workflowCounts.map(s => s.count), 1)
 
-  if (loading) return (
-    <div className="flex items-center justify-center h-64">
-      <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"/>
-    </div>
-  )
+  if (loading) return <DashboardSkeleton />
 
   if (error) return (
     <div className="flex flex-col items-center justify-center h-64 gap-4 px-4">
