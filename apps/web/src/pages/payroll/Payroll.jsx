@@ -3,7 +3,6 @@ import { useState, useEffect } from "react";
 import { supabase } from "../../lib/supabase";
 import { Plus, X } from "lucide-react";
 import { calcAgentNet, calcEmpNet } from "../../lib/utils";
-import Modal from '../../components/Modal'
 import { Spinner } from '../../components/Skeleton'
 
 // ─── AGENT PAYROLL ────────────────────────────────────────────────────────────
