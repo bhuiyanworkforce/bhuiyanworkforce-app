@@ -88,27 +88,33 @@ async function exportPassportsCSV() {
   exportCSV((data||[]).map(p => ({ 'Passport No': p.passport_no, Candidate: p.candidates?.full_name||'', Phone: p.candidates?.phone||'', Status: p.status, 'Issue Date': p.issue_date||'', 'Expiry Date': p.expiry_date||'', Location: p.current_location||'' })), 'passports')
 }
 
-// ─── BUG 6 FIX ───────────────────────────────────────────────────────────────
-// getFromISO and getToISO were plain functions defined INSIDE the component but
-// OUTSIDE the fetchReports useCallback. Because they close over `period`,
-// `customFrom`, and `customTo` from the render scope, and fetchReports has
-// those variables listed in its `deps` array, React would create a new
-// fetchReports function on every period/customFrom/customTo change — but the
-// *old* closures of getFromISO/getToISO could still be captured if fetchReports
-// itself referenced those function references from the enclosing scope.
+// ─── DATE RANGE HELPER ───────────────────────────────────────────────────────
+// FIX: getFromISO / getToISO were copy-pasted identically inside both
+// fetchReports and fetchProfitability. A single shared utility eliminates the
+// duplication so any future date-logic change only needs to happen once.
 //
-// In practice the stale-closure window was small, but it caused a subtle bug:
-// switching period to "custom", then back to "month" while a fetch was
-// in-flight could result in the second fetch using the custom date range.
-//
-// Fix: move getFromISO and getToISO INSIDE fetchReports and fetchProfitability,
-// so they are always freshly created with the current argument values from the
-// useCallback deps. This eliminates the stale-closure risk entirely.
-//
-// As a secondary improvement: fetchReports now has a proper error state instead
-// of just console.error + returning silently (the loading spinner would get
-// stuck if invErr was truthy).
+// Accepts period/customFrom/customTo as plain arguments (not closing over
+// component state) so it is always called with fresh values and carries no
+// stale-closure risk regardless of which useCallback it is called from.
 // ─────────────────────────────────────────────────────────────────────────────
+function getDateRange(period, customFrom, customTo) {
+  function fromISO() {
+    if (period === 'custom') return customFrom ? new Date(customFrom).toISOString() : '2000-01-01T00:00:00Z'
+    const d = new Date()
+    if (period === 'month')   d.setMonth(d.getMonth() - 1)
+    if (period === 'quarter') d.setMonth(d.getMonth() - 3)
+    if (period === 'year')    d.setFullYear(d.getFullYear() - 1)
+    if (period === 'all')     return '2000-01-01T00:00:00Z'
+    return d.toISOString()
+  }
+  function toISO() {
+    if (period === 'custom' && customTo) return new Date(customTo + 'T23:59:59').toISOString()
+    return new Date().toISOString()
+  }
+  const from = fromISO()
+  const to   = toISO()
+  return { from, to, fromDay: from.split('T')[0], toDay: to.split('T')[0] }
+}
 
 export default function Reports() {
   const [loading, setLoading] = useState(true)
@@ -127,33 +133,11 @@ export default function Reports() {
   const [profitData, setProfitData] = useState([])
   const [profitLoading, setProfitLoading] = useState(false)
 
-  // ── Date helpers — defined as a pure utility outside the component ──────────
-  // Accepting period/customFrom/customTo as arguments (not closing over state)
-  // completely eliminates any stale-closure risk.
-
   const fetchReports = useCallback(async (currentPeriod, currentFrom, currentTo) => {
-    // Build date range from current, not potentially-stale, closure values
-    function getFromISO() {
-      if (currentPeriod === 'custom') return currentFrom ? new Date(currentFrom).toISOString() : '2000-01-01T00:00:00Z'
-      const d = new Date()
-      if (currentPeriod === 'month')   d.setMonth(d.getMonth() - 1)
-      if (currentPeriod === 'quarter') d.setMonth(d.getMonth() - 3)
-      if (currentPeriod === 'year')    d.setFullYear(d.getFullYear() - 1)
-      if (currentPeriod === 'all')     return '2000-01-01T00:00:00Z'
-      return d.toISOString()
-    }
-    function getToISO() {
-      if (currentPeriod === 'custom' && currentTo) return new Date(currentTo + 'T23:59:59').toISOString()
-      return new Date().toISOString()
-    }
+    const { from, to, fromDay, toDay } = getDateRange(currentPeriod, currentFrom, currentTo)
 
     setLoading(true)
     setFetchError(null)
-
-    const from = getFromISO()
-    const to = getToISO()
-    const fromDay = from.split('T')[0]
-    const toDay = to.split('T')[0]
 
     try {
       const [
@@ -217,19 +201,9 @@ export default function Reports() {
   }, []) // no deps — all inputs passed as arguments
 
   const fetchProfitability = useCallback(async (currentPeriod, currentFrom, currentTo) => {
-    function getFromISO() {
-      if (currentPeriod === 'custom') return currentFrom ? new Date(currentFrom).toISOString() : '2000-01-01T00:00:00Z'
-      const d = new Date()
-      if (currentPeriod === 'month')   d.setMonth(d.getMonth() - 1)
-      if (currentPeriod === 'quarter') d.setMonth(d.getMonth() - 3)
-      if (currentPeriod === 'year')    d.setFullYear(d.getFullYear() - 1)
-      if (currentPeriod === 'all')     return '2000-01-01T00:00:00Z'
-      return d.toISOString()
-    }
+    const { from, fromDay } = getDateRange(currentPeriod, currentFrom, currentTo)
 
     setProfitLoading(true)
-    const from = getFromISO()
-    const fromDay = from.split('T')[0]
 
     try {
       const [{ data: invoices }, { data: agents }, { data: refunds }] = await Promise.all([
