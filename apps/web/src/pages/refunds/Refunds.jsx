@@ -2,6 +2,7 @@ import PropTypes from 'prop-types'
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import { Plus, X, ChevronRight, AlertTriangle, RefreshCw } from 'lucide-react'
+import { ListSkeleton } from '../../components/Skeleton'
 
 const STATUS_COLOR = {
   pending:  'bg-amber-500/15 text-amber-400',
