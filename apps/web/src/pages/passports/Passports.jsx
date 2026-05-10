@@ -5,6 +5,7 @@ import { Plus, Search, ChevronRight, CheckCircle, Circle, X, SlidersHorizontal }
 import { PASSPORT_STATUS_COLOR as STATUS_COLOR, PASSPORT_WORKFLOW_STAGES as STATUSES_LIST } from '../../lib/constants'
 import AddPassportModal from './AddPassportModal'
 import PassportDetail from './PassportDetail'
+import { ListSkeleton } from '../../components/Skeleton'
 
 // STATUS_COLOR and stage list now imported from ../../lib/constants
 const STATUSES = STATUSES_LIST.map(s => s.key)
@@ -308,7 +309,7 @@ export default function Passports() {
         {!bulkMode && <p className="text-slate-600 text-xs text-center">Long press a passport to select multiple</p>}
 
         {loading ? (
-          <div className="flex justify-center py-12"><div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"/></div>
+          <ListSkeleton rows={7} hasSearch={false} hasTabs={true} />
         ) : (
           <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
             {passports.length === 0 ? (
