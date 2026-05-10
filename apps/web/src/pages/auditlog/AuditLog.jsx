@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import { ChevronDown, ChevronUp, AlertTriangle, RefreshCw } from 'lucide-react'
+import { Spinner } from '../../components/Skeleton'
 
 // ─── BUG 5 FIX ───────────────────────────────────────────────────────────────
 // The original fetchLogs() had no loading indicator, no error state, and no
@@ -108,11 +109,7 @@ export default function AuditLog() {
       </div>
 
       {/* ── Loading ── */}
-      {loading && (
-        <div className="flex justify-center py-12">
-          <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
-        </div>
-      )}
+      {loading && <Spinner />}
 
       {/* ── Error ── */}
       {!loading && error && (
