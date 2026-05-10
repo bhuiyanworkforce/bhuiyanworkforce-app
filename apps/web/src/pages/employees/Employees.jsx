@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../../lib/supabase'
 import { Plus, X, Users, ChevronRight, ToggleLeft, ToggleRight, RefreshCw, AlertCircle } from 'lucide-react'
 import { EMPLOYEE_ROLES as ROLES } from '../../lib/constants'
-import Modal from '../../components/Modal'
+import { Spinner } from '../../components/Skeleton'
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 
 function AddEmployeeModal({ onClose, onSaved }) {
@@ -30,42 +30,48 @@ function AddEmployeeModal({ onClose, onSaved }) {
   }
 
   return (
-    <Modal open onClose={onClose} title="Add Employee" maxWidth="max-w-lg">
-      <div className="p-5 pb-10 flex flex-col gap-4">
-        {error && (
-          <div className="flex items-center gap-2 text-red-400 text-sm bg-red-500/10 px-4 py-2 rounded-xl">
-            <AlertCircle size={15} className="flex-none" />
-            {error}
-          </div>
-        )}
-        <label className="flex flex-col gap-1">
-          <span className="text-xs text-slate-500 font-semibold">Full Name *</span>
-          <input value={form.name} onChange={e => set('name', e.target.value)} placeholder="Employee name"
-            className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500"/>
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-xs text-slate-500 font-semibold">Role</span>
-          <select value={form.role} onChange={e => set('role', e.target.value)}
-            className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500">
-            {ROLES.map(r => <option key={r} value={r}>{r.replace('_', ' ')}</option>)}
-          </select>
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-xs text-slate-500 font-semibold">Phone</span>
-          <input value={form.phone} onChange={e => set('phone', e.target.value)} placeholder="01XXXXXXXXX"
-            className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500"/>
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-xs text-slate-500 font-semibold">Basic Salary (৳) *</span>
-          <input type="number" min="0" value={form.basic_salary} onChange={e => set('basic_salary', e.target.value)} placeholder="0"
-            className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500"/>
-        </label>
-        <button type="button" onClick={handleSave} disabled={saving}
-          className="w-full bg-gradient-to-r from-indigo-500 to-violet-600 text-white py-3 rounded-xl font-bold text-sm mt-1 disabled:opacity-50">
-          {saving ? 'Saving…' : 'Add Employee'}
-        </button>
+    <div className="fixed inset-0 z-50 bg-black/70 flex items-end justify-center">
+      <div className="bg-[#0D1626] border border-slate-800 rounded-t-2xl w-full max-h-[85vh] overflow-y-auto">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800 sticky top-0 bg-[#0D1626]">
+          <h2 className="text-slate-100 font-bold text-lg">Add Employee</h2>
+          <button type="button" onClick={onClose}><X size={20} className="text-slate-400"/></button>
+        </div>
+        <div className="p-5 pb-24 flex flex-col gap-4">
+          {error && (
+            <div className="flex items-center gap-2 text-red-400 text-sm bg-red-500/10 px-4 py-2 rounded-xl">
+              <AlertCircle size={15} className="flex-none" />
+              {error}
+            </div>
+          )}
+          <label className="flex flex-col gap-1">
+            <span className="text-xs text-slate-500 font-semibold">Full Name *</span>
+            <input value={form.name} onChange={e => set('name', e.target.value)} placeholder="Employee name"
+              className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500"/>
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-xs text-slate-500 font-semibold">Role</span>
+            <select value={form.role} onChange={e => set('role', e.target.value)}
+              className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500">
+              {ROLES.map(r => <option key={r} value={r}>{r.replace('_', ' ')}</option>)}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-xs text-slate-500 font-semibold">Phone</span>
+            <input value={form.phone} onChange={e => set('phone', e.target.value)} placeholder="01XXXXXXXXX"
+              className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500"/>
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-xs text-slate-500 font-semibold">Basic Salary (৳) *</span>
+            <input type="number" min="0" value={form.basic_salary} onChange={e => set('basic_salary', e.target.value)} placeholder="0"
+              className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500"/>
+          </label>
+          <button type="button" onClick={handleSave} disabled={saving}
+            className="w-full bg-gradient-to-r from-indigo-500 to-violet-600 text-white py-3 rounded-xl font-bold text-sm mt-1 disabled:opacity-50">
+            {saving ? 'Saving…' : 'Add Employee'}
+          </button>
+        </div>
       </div>
-    </Modal>
+    </div>
   )
 }
 
@@ -179,7 +185,7 @@ function EmployeeDetail({ employee: initial, onClose, onUpdated }) {
             <p className="text-sm font-bold text-slate-200">Payroll History</p>
           </div>
           {loading ? (
-            <div className="flex justify-center py-8"><div className="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"/></div>
+            <Spinner size="w-6 h-6" />
           ) : payrolls.length === 0 ? (
             <div className="py-8 text-center text-slate-600 text-sm">No payroll records</div>
           ) : (
@@ -204,43 +210,46 @@ function EmployeeDetail({ employee: initial, onClose, onUpdated }) {
       </div>
 
       {editing && (
-        <Modal open onClose={() => setEditing(false)} title="Edit Employee" maxWidth="max-w-lg">
-          <div className="p-5 pb-10 flex flex-col gap-4">
+        <div className="fixed inset-0 bg-black/70 flex items-end z-50">
+          <div className="bg-[#0d1526] rounded-t-2xl w-full p-5 max-h-[80vh] overflow-y-auto pb-24">
+            <h2 className="text-lg font-bold text-slate-100 mb-4">Edit Employee</h2>
             {editError && (
               <div className="flex items-center gap-2 text-red-400 text-sm bg-red-500/10 px-4 py-2 rounded-xl mb-4">
                 <AlertCircle size={15} className="flex-none" /> {editError}
               </div>
             )}
-            <label className="flex flex-col gap-1">
-              <span className="text-xs text-slate-500 font-semibold">Full Name *</span>
-              <input value={editForm.name} onChange={e => setEditForm(p => ({...p, name: e.target.value}))}
-                className="bg-slate-900 border border-slate-800 text-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-500"/>
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-xs text-slate-500 font-semibold">Role</span>
-              <select value={editForm.role} onChange={e => setEditForm(p => ({...p, role: e.target.value}))}
-                className="bg-slate-900 border border-slate-800 text-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-500">
-                {ROLES.map(r => <option key={r} value={r}>{r.replace('_', ' ')}</option>)}
-              </select>
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-xs text-slate-500 font-semibold">Phone</span>
-              <input value={editForm.phone} onChange={e => setEditForm(p => ({...p, phone: e.target.value}))}
-                className="bg-slate-900 border border-slate-800 text-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-500"/>
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-xs text-slate-500 font-semibold">Basic Salary (৳) *</span>
-              <input type="number" min="0" value={editForm.basic_salary} onChange={e => setEditForm(p => ({...p, basic_salary: e.target.value}))}
-                className="bg-slate-900 border border-slate-800 text-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-500"/>
-            </label>
-            <div className="flex gap-3 mt-2">
-              <button type="button" onClick={() => setEditing(false)} className="flex-1 border border-slate-700 text-slate-300 rounded-xl py-2.5 text-sm font-semibold">Cancel</button>
-              <button type="button" onClick={saveEdit} disabled={saving} className="flex-1 bg-indigo-600 text-white rounded-xl py-2.5 text-sm font-bold disabled:opacity-50">
-                {saving ? 'Saving…' : 'Save'}
-              </button>
+            <div className="flex flex-col gap-4">
+              <label className="flex flex-col gap-1">
+                <span className="text-xs text-slate-500 font-semibold">Full Name *</span>
+                <input value={editForm.name} onChange={e => setEditForm(p => ({...p, name: e.target.value}))}
+                  className="bg-slate-800 border border-slate-700 text-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-500"/>
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-xs text-slate-500 font-semibold">Role</span>
+                <select value={editForm.role} onChange={e => setEditForm(p => ({...p, role: e.target.value}))}
+                  className="bg-slate-800 border border-slate-700 text-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-500">
+                  {ROLES.map(r => <option key={r} value={r}>{r.replace('_', ' ')}</option>)}
+                </select>
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-xs text-slate-500 font-semibold">Phone</span>
+                <input value={editForm.phone} onChange={e => setEditForm(p => ({...p, phone: e.target.value}))}
+                  className="bg-slate-800 border border-slate-700 text-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-500"/>
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-xs text-slate-500 font-semibold">Basic Salary (৳) *</span>
+                <input type="number" min="0" value={editForm.basic_salary} onChange={e => setEditForm(p => ({...p, basic_salary: e.target.value}))}
+                  className="bg-slate-800 border border-slate-700 text-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-500"/>
+              </label>
+              <div className="flex gap-3 mt-2">
+                <button type="button" onClick={() => setEditing(false)} className="flex-1 border border-slate-700 text-slate-300 rounded-xl py-2.5 text-sm font-semibold">Cancel</button>
+                <button type="button" onClick={saveEdit} disabled={saving} className="flex-1 bg-indigo-600 text-white rounded-xl py-2.5 text-sm font-bold disabled:opacity-50">
+                  {saving ? 'Saving…' : 'Save'}
+                </button>
+              </div>
             </div>
           </div>
-        </Modal>
+        </div>
       )}
     </div>
   )
@@ -324,7 +333,7 @@ export default function Employees() {
           <button onClick={handleRefresh} className="bg-indigo-500 text-white font-bold px-5 py-2.5 rounded-xl text-sm">Retry</button>
         </div>
       ) : loading ? (
-        <div className="flex justify-center py-12"><div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"/></div>
+        <ListSkeleton rows={6} hasSearch={false} hasTabs={false} />
       ) : (
         <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
           {filtered.length === 0 ? (
