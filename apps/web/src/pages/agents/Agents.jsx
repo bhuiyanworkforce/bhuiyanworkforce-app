@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
-import { Plus, Users, Wallet, TrendingUp } from 'lucide-react'
+import { Plus, Users, Wallet, TrendingUp, AlertTriangle, RefreshCw } from 'lucide-react'
 import AddAgentModal from './AddAgentModal'
 import AgentDetail from './AgentDetail'
 import { ListSkeleton } from '../../components/Skeleton'
@@ -8,6 +8,7 @@ import { ListSkeleton } from '../../components/Skeleton'
 export default function Agents() {
   const [agents, setAgents] = useState([])
   const [loading, setLoading] = useState(true)
+  const [fetchError, setFetchError] = useState('')
   const [showAdd, setShowAdd] = useState(false)
   const [selected, setSelected] = useState(null)
   const [summary, setSummary] = useState({ total: 0, totalCommission: 0 })
@@ -49,6 +50,7 @@ export default function Agents() {
       })
     } catch (err) {
       console.error('[Agents] fetchAgents failed:', err)
+      setFetchError(err.message || 'Failed to load agents')
       setAgents([])
     } finally {
       setLoading(false)
@@ -63,7 +65,20 @@ export default function Agents() {
 
   function renderAgentList() {
     if (loading) {
-      return <ListSkeleton rows={6} hasSearch={false} hasTabs={false} />
+      return <ListSkeleton rows={4} hasSearch={false} hasTabs={false} />
+    }
+    if (fetchError) {
+      return (
+        <div className="bg-slate-900 border border-red-500/30 rounded-2xl p-6 flex flex-col items-center gap-3 text-center">
+          <AlertTriangle size={24} className="text-red-400" />
+          <p className="text-slate-300 text-sm font-semibold">Failed to load agents</p>
+          <p className="text-slate-500 text-xs">{fetchError}</p>
+          <button onClick={fetchAgents}
+            className="flex items-center gap-2 bg-slate-800 text-slate-200 font-bold px-4 py-2 rounded-xl text-sm">
+            <RefreshCw size={14} /> Retry
+          </button>
+        </div>
+      )
     }
     if (agents.length === 0) {
       return (
