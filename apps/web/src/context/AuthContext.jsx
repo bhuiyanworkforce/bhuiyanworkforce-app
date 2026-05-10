@@ -102,9 +102,14 @@ export function AuthProvider({ children }) {
         ) {
           clearTimeout(timeout)
           if (!storedSession?.user) {
-            // No stored session — we were waiting on this
-            await fetchProfile(session.user.id)
-            setLoading(false)
+            // No stored session — we were waiting on this.
+            // FIX: use finally so setLoading(false) is guaranteed even if
+            // fetchProfile throws (network error, RLS denial, etc.).
+            try {
+              await fetchProfile(session.user.id)
+            } finally {
+              setLoading(false)
+            }
           }
         }
       }
@@ -143,4 +148,4 @@ export function useAuth() {
   const ctx = useContext(AuthContext)
   if (!ctx) throw new Error('useAuth must be used inside <AuthProvider>')
   return ctx
-}
+            }
