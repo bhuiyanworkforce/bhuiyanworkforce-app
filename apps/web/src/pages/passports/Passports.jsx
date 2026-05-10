@@ -1,11 +1,10 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { useLocation } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
-import { Plus, Search, ChevronRight, CheckCircle, Circle, X, SlidersHorizontal } from 'lucide-react'
+import { Plus, Search, ChevronRight, CheckCircle, Circle, X, SlidersHorizontal, AlertTriangle, RefreshCw } from 'lucide-react'
 import { PASSPORT_STATUS_COLOR as STATUS_COLOR, PASSPORT_WORKFLOW_STAGES as STATUSES_LIST } from '../../lib/constants'
 import AddPassportModal from './AddPassportModal'
 import PassportDetail from './PassportDetail'
-import { ListSkeleton } from '../../components/Skeleton'
 
 // STATUS_COLOR and stage list now imported from ../../lib/constants
 const STATUSES = STATUSES_LIST.map(s => s.key)
@@ -78,6 +77,7 @@ export default function Passports() {
   const [passports, setPassports]       = useState([])
   const [loading, setLoading]           = useState(true)
   const [loadingMore, setLoadingMore]   = useState(false)
+  const [fetchError, setFetchError]     = useState('')
   const [search, setSearch]             = useState('')
   const [showAdd, setShowAdd]           = useState(false)
   const [selected, setSelected]         = useState(null)
@@ -126,6 +126,7 @@ export default function Passports() {
       setOffset(newOffset)
     } catch (err) {
       console.error('[Passports] fetchPassports failed:', err)
+      setFetchError(err.message || 'Failed to load passports')
       if (newOffset === 0) setPassports([])
     } finally {
       setLoading(false)
@@ -310,6 +311,16 @@ export default function Passports() {
 
         {loading ? (
           <ListSkeleton rows={7} hasSearch={false} hasTabs={true} />
+        ) : fetchError ? (
+          <div className="bg-slate-900 border border-red-500/30 rounded-2xl p-6 flex flex-col items-center gap-3 text-center">
+            <AlertTriangle size={24} className="text-red-400" />
+            <p className="text-slate-300 text-sm font-semibold">Failed to load passports</p>
+            <p className="text-slate-500 text-xs">{fetchError}</p>
+            <button onClick={() => fetchPassports(0)}
+              className="flex items-center gap-2 bg-slate-800 text-slate-200 font-bold px-4 py-2 rounded-xl text-sm">
+              <RefreshCw size={14} /> Retry
+            </button>
+          </div>
         ) : (
           <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
             {passports.length === 0 ? (
