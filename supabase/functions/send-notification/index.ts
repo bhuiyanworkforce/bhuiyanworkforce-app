@@ -8,12 +8,13 @@
 //      which is built into the Supabase edge runtime — no external URL needed.
 
 function escHtml(s: unknown): string {
-  return String(s ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;')
+  if (s === null || s === undefined) return ''
+  return String(s)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll(''', '&#39;')
 }
 
 Deno.serve(async (req) => {
