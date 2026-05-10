@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { Plus, Search, ChevronRight } from 'lucide-react'
 import AddVisaModal from './AddVisaModal'
 import VisaDetail from './VisaDetail'
+import { ListSkeleton } from '../../components/Skeleton'
 
 const STATUS_COLOR = {
   draft:      'bg-slate-500/15 text-slate-400',
@@ -110,9 +111,7 @@ export default function VisaApplications() {
         </div>
 
         {loading ? (
-          <div className="flex justify-center py-12">
-            <div className="w-8 h-8 border-2 border-amber-500 border-t-transparent rounded-full animate-spin"/>
-          </div>
+          <ListSkeleton rows={6} hasSearch={false} hasTabs={true} />
         ) : (
           <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
             {filtered.length === 0 ? (
