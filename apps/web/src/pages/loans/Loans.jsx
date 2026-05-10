@@ -2,6 +2,7 @@ import PropTypes from 'prop-types'
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { Plus, X, ChevronDown, ChevronUp, AlertTriangle, RefreshCw } from 'lucide-react'
+import { ListSkeleton } from '../../components/Skeleton'
 import { LOAN_STATUS_COLOR as STATUS_COLOR } from '../../lib/constants'
 
 // STATUS_COLOR is now imported from ../../lib/constants
