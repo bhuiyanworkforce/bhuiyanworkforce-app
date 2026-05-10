@@ -16,10 +16,9 @@ jobs:
         working-directory: apps/web
         run: |
           npm install -g pnpm
-          # TEMPORARY: using --no-frozen-lockfile to pick up react-dropzone and
-          # recharts which were added to package.json. Revert to --frozen-lockfile
-          # once pnpm-lock.yaml has been committed with those packages resolved.
-          pnpm install --no-frozen-lockfile
+          # --frozen-lockfile ensures CI installs exactly what is pinned in
+          # pnpm-lock.yaml and fails loudly if the lockfile is out of date.
+          pnpm install --frozen-lockfile
       - name: Build
         working-directory: apps/web
         run: pnpm run build
@@ -34,9 +33,6 @@ jobs:
           accountId: ${{ secrets.CF_ACCOUNT_ID }}
           command: pages deploy apps/web/dist --project-name=bhuiyanworkforce-app --branch=main
 
-  # FIX: The Hono API (apps/api) was never deployed by CI — it had to be
-  # deployed manually with `wrangler deploy`. This job deploys it automatically
-  # on every push to main, keeping the API in sync with the frontend.
   deploy-api:
     runs-on: ubuntu-latest
     steps:
