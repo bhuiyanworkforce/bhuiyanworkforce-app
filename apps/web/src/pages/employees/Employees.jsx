@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../../lib/supabase'
 import { Plus, X, Users, ChevronRight, ToggleLeft, ToggleRight, RefreshCw, AlertCircle } from 'lucide-react'
 import { EMPLOYEE_ROLES as ROLES } from '../../lib/constants'
-import { Spinner } from '../../components/Skeleton'
+import { Spinner, ListSkeleton } from '../../components/Skeleton'
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 
 function AddEmployeeModal({ onClose, onSaved }) {
