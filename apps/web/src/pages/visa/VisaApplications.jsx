@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
-import { Plus, Search, ChevronRight } from 'lucide-react'
+import { Plus, Search, ChevronRight, AlertTriangle, RefreshCw } from 'lucide-react'
 import AddVisaModal from './AddVisaModal'
 import VisaDetail from './VisaDetail'
 import { ListSkeleton } from '../../components/Skeleton'
@@ -32,9 +32,10 @@ function getFilterLabel(f, apps, counts) {
 }
 
 export default function VisaApplications() {
-  const [apps, setApps]         = useState([])
-  const [loading, setLoading]   = useState(true)
-  const [search, setSearch]     = useState('')
+  const [apps, setApps]           = useState([])
+  const [loading, setLoading]     = useState(true)
+  const [fetchError, setFetchError] = useState('')
+  const [search, setSearch]       = useState('')
   const [filter, setFilter]     = useState('all')
   const [showAdd, setShowAdd]   = useState(false)
   const [selected, setSelected] = useState(null)
@@ -54,6 +55,7 @@ export default function VisaApplications() {
       setApps(data || [])
     } catch (err) {
       console.error('[VisaApplications] fetchApps failed:', err)
+      setFetchError(err.message || 'Failed to load visa applications')
       setApps([])
     } finally {
       setLoading(false)
@@ -112,6 +114,16 @@ export default function VisaApplications() {
 
         {loading ? (
           <ListSkeleton rows={6} hasSearch={false} hasTabs={true} />
+        ) : fetchError ? (
+          <div className="bg-slate-900 border border-red-500/30 rounded-2xl p-6 flex flex-col items-center gap-3 text-center">
+            <AlertTriangle size={24} className="text-red-400" />
+            <p className="text-slate-300 text-sm font-semibold">Failed to load visa applications</p>
+            <p className="text-slate-500 text-xs">{fetchError}</p>
+            <button onClick={fetchApps}
+              className="flex items-center gap-2 bg-slate-800 text-slate-200 font-bold px-4 py-2 rounded-xl text-sm">
+              <RefreshCw size={14} /> Retry
+            </button>
+          </div>
         ) : (
           <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
             {filtered.length === 0 ? (
