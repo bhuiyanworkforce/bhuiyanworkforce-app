@@ -60,6 +60,24 @@ if (typeof document !== 'undefined') {
 }
 
 // ---------------------------------------------------------------------------
+// Spinner — lightweight inline loading indicator
+// Use for tab/section loading where a full skeleton is too heavy,
+// e.g. CandidateDetail tab content, Reports profit tab, Payroll sub-lists.
+// ---------------------------------------------------------------------------
+
+/**
+ * @param {string} color   Tailwind border-color class (default indigo)
+ * @param {string} size    Tailwind size classes (default w-8 h-8)
+ */
+export function Spinner({ color = 'border-indigo-500', size = 'w-8 h-8' }) {
+  return (
+    <div className="flex justify-center py-12" aria-label="Loading" role="status">
+      <div className={`${size} border-2 ${color} border-t-transparent rounded-full animate-spin`} />
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Dashboard skeleton
 // ---------------------------------------------------------------------------
 
