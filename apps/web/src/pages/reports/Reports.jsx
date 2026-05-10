@@ -8,6 +8,7 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   Cell, PieChart, Pie, Legend,
 } from 'recharts'
+import { Spinner } from '../../components/Skeleton'
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 
@@ -390,9 +391,7 @@ export default function Reports() {
 
       {activeTab === 'overview' && (
         loading ? (
-          <div className="flex justify-center py-16">
-            <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"/>
-          </div>
+          <Spinner />
         ) : fetchError ? (
           <div className="bg-slate-900 border border-red-500/30 rounded-2xl p-6 flex flex-col items-center gap-3 text-center">
             <p className="text-red-400 text-sm">{fetchError}</p>
@@ -424,33 +423,24 @@ export default function Reports() {
                 <div className="px-2 pt-4 pb-2">
                   <ResponsiveContainer width="100%" height={160}>
                     <BarChart data={data.revenue} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
-                      <XAxis
-                        dataKey="month"
-                        tick={{ fill: '#64748b', fontSize: 10, fontWeight: 600 }}
-                        axisLine={false} tickLine={false}
-                      />
-                      <YAxis
-                        tick={{ fill: '#475569', fontSize: 9 }}
-                        axisLine={false} tickLine={false}
-                        tickFormatter={v => v >= 1000 ? (v/1000).toFixed(0)+'k' : v}
-                      />
+                      <XAxis dataKey="month" tick={{ fill: '#64748b', fontSize: 10, fontWeight: 600 }} axisLine={false} tickLine={false} />
+                      <YAxis tick={{ fill: '#475569', fontSize: 9 }} axisLine={false} tickLine={false}
+                        tickFormatter={v => v >= 1000 ? (v/1000).toFixed(0)+'k' : v} />
                       <Tooltip
                         cursor={{ fill: 'rgba(99,102,241,0.08)' }}
                         contentStyle={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 12, fontSize: 12 }}
                         labelStyle={{ color: '#94a3b8', fontWeight: 700 }}
                         formatter={v => ['৳' + v.toLocaleString(), 'Revenue']}
                       />
-                      <Bar dataKey="amount" radius={[6, 6, 0, 0]} maxBarSize={40}>
-                        {data.revenue.map((_, i) => (
-                          <Cell key={i} fill="url(#revenueGrad)" />
-                        ))}
-                      </Bar>
                       <defs>
                         <linearGradient id="revenueGrad" x1="0" y1="0" x2="0" y2="1">
                           <stop offset="0%" stopColor="#7c3aed" />
                           <stop offset="100%" stopColor="#6366f1" />
                         </linearGradient>
                       </defs>
+                      <Bar dataKey="amount" radius={[6, 6, 0, 0]} maxBarSize={40}>
+                        {data.revenue.map((_, i) => <Cell key={i} fill="url(#revenueGrad)" />)}
+                      </Bar>
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -472,14 +462,8 @@ export default function Reports() {
                   <div className="flex flex-col items-center py-2">
                     <ResponsiveContainer width="100%" height={200}>
                       <PieChart>
-                        <Pie
-                          data={data.passportsByStatus}
-                          dataKey="count"
-                          nameKey="status"
-                          cx="50%" cy="50%"
-                          innerRadius={52} outerRadius={80}
-                          paddingAngle={2}
-                        >
+                        <Pie data={data.passportsByStatus} dataKey="count" nameKey="status"
+                          cx="50%" cy="50%" innerRadius={52} outerRadius={80} paddingAngle={2}>
                           {data.passportsByStatus.map(({ status }) => (
                             <Cell key={status} fill={STATUS_HEX[status] ?? '#64748b'} />
                           ))}
@@ -533,7 +517,7 @@ export default function Reports() {
 
       {activeTab === 'profit' && (
         profitLoading ? (
-          <div className="flex justify-center py-16"><div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin"/></div>
+          <Spinner color="border-emerald-500" />
         ) : (
           <>
             <div className="grid grid-cols-3 gap-3">
