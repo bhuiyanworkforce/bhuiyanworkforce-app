@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import EditPassportModal from './EditPassportModal'
 import { X, ChevronRight, CheckCircle, Circle, Clock, AlertCircle, Pencil } from 'lucide-react'
+import { Spinner } from '../../components/Skeleton'
 
 const WORKFLOW = [
   { key: 'received',        label: 'Received',         desc: 'Passport received at office' },
@@ -243,7 +244,7 @@ export default function PassportDetail({ passport: initialPassport, onClose, onU
               <h3 className="text-sm font-bold text-slate-300">Activity Log</h3>
             </div>
             {loading ? (
-              <div className="flex justify-center py-8"><div className="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" /></div>
+              <Spinner size="w-6 h-6" />
             ) : logs.length === 0 ? (
               <p className="text-center text-slate-600 py-8 text-sm">No activity yet</p>
             ) : (
