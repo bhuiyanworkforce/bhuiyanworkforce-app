@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 
 const AuthContext = createContext(null)
@@ -23,7 +23,8 @@ function readSessionFromStorage() {
       return null // expired — fall through to network refresh
     }
     return parsed
-  } catch (e) {
+  } catch {
+    // JSON.parse or localStorage access failed — treat as no session
     return null
   }
 }
@@ -67,9 +68,7 @@ export function AuthProvider({ children }) {
     }
 
     // ── Safety net: 10s timeout if no stored session ───────────────────────
-    let timedOut = false
     const timeout = setTimeout(() => {
-      timedOut = true
       console.warn('[Auth] Loading timed out — unblocking app')
       setLoading(false)
     }, 10000)
@@ -102,14 +101,9 @@ export function AuthProvider({ children }) {
         ) {
           clearTimeout(timeout)
           if (!storedSession?.user) {
-            // No stored session — we were waiting on this.
-            // FIX: use finally so setLoading(false) is guaranteed even if
-            // fetchProfile throws (network error, RLS denial, etc.).
-            try {
-              await fetchProfile(session.user.id)
-            } finally {
-              setLoading(false)
-            }
+            // No stored session — we were waiting on this
+            await fetchProfile(session.user.id)
+            setLoading(false)
           }
         }
       }
@@ -137,8 +131,13 @@ export function AuthProvider({ children }) {
     setLoading(false)
   }, [])
 
+  const ctx = useMemo(
+    () => ({ user, profile, loading, authError, signIn, signOut }),
+    [user, profile, loading, authError, signIn, signOut]
+  )
+
   return (
-    <AuthContext.Provider value={{ user, profile, loading, authError, signIn, signOut }}>
+    <AuthContext.Provider value={ctx}>
       {children}
     </AuthContext.Provider>
   )
@@ -148,4 +147,4 @@ export function useAuth() {
   const ctx = useContext(AuthContext)
   if (!ctx) throw new Error('useAuth must be used inside <AuthProvider>')
   return ctx
-            }
+}
