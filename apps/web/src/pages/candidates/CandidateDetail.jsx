@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { X, Stamp, Receipt, Phone, Globe, Calendar, Paperclip, Trash2, ChevronDown, Edit2, AlertTriangle } from 'lucide-react'
 import EditCandidateModal from './EditCandidateModal'
+import { Spinner } from '../../components/Skeleton'
 
 const PIPELINE_STAGES = [
   { key: 'new',           label: 'New',            color: 'bg-slate-500/15 text-slate-400'     },
@@ -337,9 +338,7 @@ export default function CandidateDetail({ candidate: initialCandidate, onClose }
           </div>
 
           {loading ? (
-            <div className="flex justify-center py-12">
-              <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"/>
-            </div>
+            <Spinner />
           ) : (
             renderTabContent()
           )}
