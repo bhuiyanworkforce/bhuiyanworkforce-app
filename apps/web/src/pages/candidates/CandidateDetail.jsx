@@ -1,7 +1,8 @@
 import PropTypes from 'prop-types'
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
-import { X, Stamp, Receipt, Phone, Globe, Calendar, Paperclip, Trash2, ChevronDown, Edit2, AlertTriangle } from 'lucide-react'
+import { X, Stamp, Receipt, Phone, Globe, Calendar, Paperclip, Trash2, ChevronDown, Edit2, AlertTriangle, UploadCloud } from 'lucide-react'
+import { useDropzone } from 'react-dropzone'
 import EditCandidateModal from './EditCandidateModal'
 import { Spinner } from '../../components/Skeleton'
 
@@ -41,6 +42,7 @@ export default function CandidateDetail({ candidate: initialCandidate, onClose }
   const [documents, setDocuments]         = useState([])
   const [uploading, setUploading]         = useState(false)
   const [uploadError, setUploadError]     = useState('')
+  const [uploadQueue, setUploadQueue]     = useState([])  // [{ name, status: 'pending'|'done'|'error' }]
   const [loading, setLoading]             = useState(true)
   const [tab, setTab]                     = useState('passports')
   const [showStageMenu, setShowStageMenu] = useState(false)
@@ -83,25 +85,53 @@ export default function CandidateDetail({ candidate: initialCandidate, onClose }
     load()
   }, [candidate.id])
 
-  async function uploadDoc(file) {
+  async function uploadFiles(files) {
+    if (!files?.length) return
     setUploading(true)
     setUploadError('')
-    const ext = file.name.split('.').pop()
-    const path = `${candidate.id}/${Date.now()}.${ext}`
-    const { error: upErr } = await supabase.storage.from('documents').upload(path, file)
-    if (upErr) { setUploadError(upErr.message); setUploading(false); return }
-    const { error: dbErr } = await supabase.from('candidate_documents').insert({
-      candidate_id: candidate.id,
-      name: file.name,
-      storage_path: path,
-      type: ext.toUpperCase(),
-    })
-    if (dbErr) { setUploadError(dbErr.message); setUploading(false); return }
+    const queue = Array.from(files).map(f => ({ name: f.name, status: 'pending' }))
+    setUploadQueue(queue)
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i]
+      const ext  = file.name.split('.').pop()
+      const path = `${candidate.id}/${Date.now()}-${i}.${ext}`
+
+      setUploadQueue(q => q.map((item, idx) => idx === i ? { ...item, status: 'uploading' } : item))
+
+      const { error: upErr } = await supabase.storage.from('documents').upload(path, file)
+      if (upErr) {
+        setUploadQueue(q => q.map((item, idx) => idx === i ? { ...item, status: 'error' } : item))
+        setUploadError(`${file.name}: ${upErr.message}`)
+        continue
+      }
+      const { error: dbErr } = await supabase.from('candidate_documents').insert({
+        candidate_id: candidate.id,
+        name: file.name,
+        storage_path: path,
+        type: ext.toUpperCase(),
+      })
+      if (dbErr) {
+        setUploadQueue(q => q.map((item, idx) => idx === i ? { ...item, status: 'error' } : item))
+        setUploadError(`${file.name}: ${dbErr.message}`)
+        continue
+      }
+      setUploadQueue(q => q.map((item, idx) => idx === i ? { ...item, status: 'done' } : item))
+    }
+
     const { data: docs } = await supabase.from('candidate_documents')
       .select('*').eq('candidate_id', candidate.id).order('created_at', { ascending: false })
     setDocuments(docs || [])
     setUploading(false)
+    setTimeout(() => setUploadQueue([]), 2000)
   }
+
+  // react-dropzone hook — defined at component level, used in the documents tab
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop: uploadFiles,
+    disabled: uploading,
+    multiple: true,
+  })
 
   async function confirmAndDeleteDoc() {
     if (!confirmDeleteDoc) return
@@ -192,21 +222,58 @@ export default function CandidateDetail({ candidate: initialCandidate, onClose }
       <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
         <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800">
           <p className="text-slate-400 text-xs font-semibold">{documents.length} file{fileSuffix(documents.length)}</p>
-          <label className={`text-xs font-bold cursor-pointer ${uploading ? 'text-slate-500' : 'text-indigo-400'}`}>
-            {uploading ? 'Uploading...' : '+ Upload'}
-            <input type="file" className="hidden" disabled={uploading}
-              onChange={e => { if (e.target.files[0]) uploadDoc(e.target.files[0]) }}/>
-          </label>
+          <span className="text-slate-600 text-xs">drag & drop or click below</span>
         </div>
 
+        {/* Drop zone */}
+        <div
+          {...getRootProps()}
+          className={`mx-4 my-3 border-2 border-dashed rounded-xl px-4 py-5 flex flex-col items-center gap-2 cursor-pointer transition-colors
+            ${isDragActive
+              ? 'border-indigo-400 bg-indigo-500/10'
+              : uploading
+                ? 'border-slate-700 bg-slate-800/40 cursor-not-allowed opacity-60'
+                : 'border-slate-700 hover:border-indigo-500/60 hover:bg-slate-800/60'
+            }`}
+        >
+          <input {...getInputProps()} />
+          <UploadCloud size={22} className={isDragActive ? 'text-indigo-400' : 'text-slate-500'} />
+          <p className="text-xs text-slate-500 text-center">
+            {isDragActive
+              ? 'Drop files here…'
+              : uploading
+                ? 'Uploading…'
+                : 'Drop files here, or tap to select'}
+          </p>
+        </div>
+
+        {/* Per-file upload progress */}
+        {uploadQueue.length > 0 && (
+          <ul className="px-4 pb-3 flex flex-col gap-1">
+            {uploadQueue.map((item, i) => (
+              <li key={i} className="flex items-center gap-2 text-xs">
+                {item.status === 'done'    && <span className="text-emerald-400">✓</span>}
+                {item.status === 'error'   && <span className="text-red-400">✗</span>}
+                {item.status === 'uploading' && (
+                  <span className="w-3 h-3 border border-indigo-400 border-t-transparent rounded-full animate-spin flex-none" />
+                )}
+                {item.status === 'pending' && <span className="w-3 h-3 rounded-full bg-slate-700 flex-none" />}
+                <span className={`truncate ${item.status === 'error' ? 'text-red-400' : 'text-slate-400'}`}>
+                  {item.name}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+
         {uploadError && (
-          <div className="flex items-center gap-2 text-red-400 text-xs px-4 py-2 bg-red-500/10 border-b border-slate-800">
+          <div className="flex items-center gap-2 text-red-400 text-xs px-4 py-2 bg-red-500/10 border-t border-slate-800">
             <AlertTriangle size={13} className="flex-none"/> {uploadError}
           </div>
         )}
 
         {documents.length === 0
-          ? <p className="text-center text-slate-600 py-10 text-sm">No documents uploaded</p>
+          ? <p className="text-center text-slate-600 py-6 text-sm border-t border-slate-800">No documents uploaded</p>
           : <ul>{documents.map((doc, i) => {
               const isPendingDelete = confirmDeleteDoc?.id === doc.id
               return (
