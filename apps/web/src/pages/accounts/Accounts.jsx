@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase'
 import { Plus, Receipt, AlertTriangle, Search, RefreshCw } from 'lucide-react'
 import CreateInvoiceModal from './CreateInvoiceModal'
 import InvoiceDetail from './InvoiceDetail'
+import { AccountsSkeleton } from '../../components/Skeleton'
 
 const PAGE_SIZE = 20
 
@@ -264,9 +265,7 @@ export default function Accounts() {
             <button onClick={handleRefresh} className="bg-indigo-500 text-white font-bold px-5 py-2.5 rounded-xl text-sm">Retry</button>
           </div>
         ) : loading ? (
-          <div className="flex justify-center py-12">
-            <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
-          </div>
+          <AccountsSkeleton />
         ) : (
           <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
             {invoices.length === 0 ? (
