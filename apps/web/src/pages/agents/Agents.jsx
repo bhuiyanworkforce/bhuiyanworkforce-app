@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { Plus, Users, Wallet, TrendingUp } from 'lucide-react'
 import AddAgentModal from './AddAgentModal'
 import AgentDetail from './AgentDetail'
+import { ListSkeleton } from '../../components/Skeleton'
 
 export default function Agents() {
   const [agents, setAgents] = useState([])
@@ -62,11 +63,7 @@ export default function Agents() {
 
   function renderAgentList() {
     if (loading) {
-      return (
-        <div className="flex justify-center py-12">
-          <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
-        </div>
-      )
+      return <ListSkeleton rows={6} hasSearch={false} hasTabs={false} />
     }
     if (agents.length === 0) {
       return (
