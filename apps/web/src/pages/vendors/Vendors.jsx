@@ -2,7 +2,7 @@ import PropTypes from 'prop-types'
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { Plus, Search, Building2, X, ChevronRight, AlertTriangle, RefreshCw } from 'lucide-react'
-import { Spinner } from '../../components/Skeleton'
+import { Spinner, ListSkeleton } from '../../components/Skeleton'
 
 const VCATEGORIES = ['general','embassy','medical','travel','printing','bank','other']
 
