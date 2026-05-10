@@ -2,7 +2,6 @@ import PropTypes from 'prop-types'
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { Plus, X, ChevronRight, AlertTriangle, RefreshCw } from 'lucide-react'
-import Modal from '../../components/Modal'
 
 const STATUS_COLOR = { pending:'bg-amber-500/15 text-amber-400', cleared:'bg-emerald-500/15 text-emerald-400', bounced:'bg-red-500/15 text-red-400', cancelled:'bg-slate-500/15 text-slate-400' }
 const TYPE_COLOR   = { receivable:'bg-blue-500/15 text-blue-400', payable:'bg-rose-500/15 text-rose-400' }
@@ -22,54 +21,60 @@ function AddChequeModal({ onClose, onSaved }) {
   }
 
   return (
-    <Modal open onClose={onClose} title="Add Cheque" maxWidth="max-w-lg">
-      <div className="p-5 pb-10 flex flex-col gap-4">
-        {error && <p className="text-red-400 text-sm bg-red-500/10 px-4 py-2 rounded-xl">{error}</p>}
-        <label className="flex flex-col gap-1">
-          <span className="text-xs text-slate-500 font-semibold">Type</span>
-          <div className="grid grid-cols-2 gap-2">
-            {['receivable','payable'].map(t=>(
-              <button key={t} onClick={()=>set('type',t)} className={`py-2.5 rounded-xl text-sm font-bold capitalize transition-colors ${form.type===t?'bg-indigo-500 text-white':'bg-slate-800 text-slate-400'}`}>{t}</button>
-            ))}
+    <div className="fixed inset-0 z-50 bg-black/70 flex items-end justify-center">
+      <div className="bg-[#0D1626] border border-slate-800 rounded-t-2xl w-full max-w-lg max-h-[82vh] overflow-y-auto mb-0">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800 sticky top-0 bg-[#0D1626]">
+          <h2 className="text-slate-100 font-bold text-lg">Add Cheque</h2>
+          <button onClick={onClose}><X size={20} className="text-slate-400"/></button>
+        </div>
+        <div className="p-5 pb-24 flex flex-col gap-4">
+          {error && <p className="text-red-400 text-sm bg-red-500/10 px-4 py-2 rounded-xl">{error}</p>}
+          <label className="flex flex-col gap-1">
+            <span className="text-xs text-slate-500 font-semibold">Type</span>
+            <div className="grid grid-cols-2 gap-2">
+              {['receivable','payable'].map(t=>(
+                <button key={t} onClick={()=>set('type',t)} className={`py-2.5 rounded-xl text-sm font-bold capitalize transition-colors ${form.type===t?'bg-indigo-500 text-white':'bg-slate-800 text-slate-400'}`}>{t}</button>
+              ))}
+            </div>
+          </label>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-slate-500 font-semibold">Cheque No. *</span>
+              <input value={form.cheque_no} onChange={e=>set('cheque_no',e.target.value)} placeholder="123456" className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500"/>
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-slate-500 font-semibold">Bank Name</span>
+              <input value={form.bank_name} onChange={e=>set('bank_name',e.target.value)} placeholder="Optional" className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500"/>
+            </label>
           </div>
-        </label>
-        <div className="grid grid-cols-2 gap-3">
           <label className="flex flex-col gap-1">
-            <span className="text-xs text-slate-500 font-semibold">Cheque No. *</span>
-            <input value={form.cheque_no} onChange={e=>set('cheque_no',e.target.value)} placeholder="123456" className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500"/>
+            <span className="text-xs text-slate-500 font-semibold">Party Name *</span>
+            <input value={form.party_name} onChange={e=>set('party_name',e.target.value)} placeholder="Payer / Payee name" className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500"/>
           </label>
           <label className="flex flex-col gap-1">
-            <span className="text-xs text-slate-500 font-semibold">Bank Name</span>
-            <input value={form.bank_name} onChange={e=>set('bank_name',e.target.value)} placeholder="Optional" className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500"/>
+            <span className="text-xs text-slate-500 font-semibold">Amount (৳) *</span>
+            <input type="number" min="0" value={form.amount} onChange={e=>set('amount',e.target.value)} placeholder="0" className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500"/>
           </label>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-slate-500 font-semibold">Issue Date</span>
+              <input type="date" value={form.issue_date} onChange={e=>set('issue_date',e.target.value)} className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500"/>
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-slate-500 font-semibold">Due Date *</span>
+              <input type="date" value={form.due_date} onChange={e=>set('due_date',e.target.value)} className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500"/>
+            </label>
+          </div>
+          <label className="flex flex-col gap-1">
+            <span className="text-xs text-slate-500 font-semibold">Notes</span>
+            <input value={form.notes} onChange={e=>set('notes',e.target.value)} placeholder="Optional" className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500"/>
+          </label>
+          <button onClick={handleSave} disabled={saving} className="w-full bg-gradient-to-r from-indigo-500 to-violet-600 text-white py-3 rounded-xl font-bold text-sm mt-1 disabled:opacity-50">
+            {saving ? 'Saving…' : 'Add Cheque'}
+          </button>
         </div>
-        <label className="flex flex-col gap-1">
-          <span className="text-xs text-slate-500 font-semibold">Party Name *</span>
-          <input value={form.party_name} onChange={e=>set('party_name',e.target.value)} placeholder="Payer / Payee name" className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500"/>
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-xs text-slate-500 font-semibold">Amount (৳) *</span>
-          <input type="number" min="0" value={form.amount} onChange={e=>set('amount',e.target.value)} placeholder="0" className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500"/>
-        </label>
-        <div className="grid grid-cols-2 gap-3">
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-slate-500 font-semibold">Issue Date</span>
-            <input type="date" value={form.issue_date} onChange={e=>set('issue_date',e.target.value)} className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500"/>
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-slate-500 font-semibold">Due Date *</span>
-            <input type="date" value={form.due_date} onChange={e=>set('due_date',e.target.value)} className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500"/>
-          </label>
-        </div>
-        <label className="flex flex-col gap-1">
-          <span className="text-xs text-slate-500 font-semibold">Notes</span>
-          <input value={form.notes} onChange={e=>set('notes',e.target.value)} placeholder="Optional" className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500"/>
-        </label>
-        <button onClick={handleSave} disabled={saving} className="w-full bg-gradient-to-r from-indigo-500 to-violet-600 text-white py-3 rounded-xl font-bold text-sm mt-1 disabled:opacity-50">
-          {saving ? 'Saving…' : 'Add Cheque'}
-        </button>
       </div>
-    </Modal>
+    </div>
   )
 }
 
@@ -243,7 +248,7 @@ export default function Cheques() {
           <button onClick={handleRefresh} className="bg-indigo-500 text-white font-bold px-5 py-2.5 rounded-xl text-sm">Retry</button>
         </div>
       ) : loading ? (
-        <div className="flex justify-center py-12"><div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"/></div>
+        <ListSkeleton rows={6} hasSearch={false} hasTabs={true} />
       ) : (
         <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
           {filtered.length === 0 ? <p className="text-center text-slate-600 py-12 text-sm">No cheques found</p> : (
