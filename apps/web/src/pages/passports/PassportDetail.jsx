@@ -100,7 +100,7 @@ export default function PassportDetail({ passport: initialPassport, onClose, onU
       const res = await fetch(`${API_URL}/api/v1/passports/status-update`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token}` },
-        body: JSON.stringify({ passport_id: passport.id, new_status: nextStage.key, note: note || null }),
+        body: JSON.stringify({ passport_id: passport.id, new_status: nextStage.key, note: note || null, user_id: user.id }),
       })
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
