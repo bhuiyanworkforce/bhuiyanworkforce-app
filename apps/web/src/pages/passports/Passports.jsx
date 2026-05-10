@@ -5,6 +5,7 @@ import { Plus, Search, ChevronRight, CheckCircle, Circle, X, SlidersHorizontal, 
 import { PASSPORT_STATUS_COLOR as STATUS_COLOR, PASSPORT_WORKFLOW_STAGES as STATUSES_LIST } from '../../lib/constants'
 import AddPassportModal from './AddPassportModal'
 import PassportDetail from './PassportDetail'
+import { ListSkeleton } from '../../components/Skeleton'
 
 // STATUS_COLOR and stage list now imported from ../../lib/constants
 const STATUSES = STATUSES_LIST.map(s => s.key)
