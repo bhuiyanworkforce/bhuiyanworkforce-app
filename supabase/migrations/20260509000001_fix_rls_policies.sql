@@ -20,6 +20,15 @@ AS $$
   SELECT role FROM public.profiles WHERE id = auth.uid()
 $$;
 
+-- Helper: returns true when the calling user is an owner or manager.
+-- Replaces the repeated literal: auth.is_staff()
+CREATE OR REPLACE FUNCTION auth.is_staff()
+RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER
+AS $$
+  SELECT auth.is_staff()
+$$;
+
 -- ── profiles ────────────────────────────────────────────────
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 
@@ -36,7 +45,7 @@ CREATE POLICY "profiles: own update"
 -- Owner / manager can read ALL profiles (e.g. staff list, audit log display).
 CREATE POLICY "profiles: owner+manager read all"
   ON public.profiles FOR SELECT
-  USING (auth.user_role() IN ('owner', 'manager'));
+  USING (auth.is_staff());
 
 -- Only the service role (used by API/edge functions) may insert profiles.
 -- New profile rows are created by the handle_new_user trigger, not by clients.
@@ -50,8 +59,8 @@ ALTER TABLE public.loans ENABLE ROW LEVEL SECURITY;
 -- Owner / manager: full CRUD on all loans.
 CREATE POLICY "loans: owner+manager all"
   ON public.loans FOR ALL
-  USING (auth.user_role() IN ('owner', 'manager'))
-  WITH CHECK (auth.user_role() IN ('owner', 'manager'));
+  USING (auth.is_staff())
+  WITH CHECK (auth.is_staff());
 
 -- Agent: can only view loans issued to them.
 CREATE POLICY "loans: agent read own"
@@ -66,8 +75,8 @@ ALTER TABLE public.loan_repayments ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "loan_repayments: owner+manager all"
   ON public.loan_repayments FOR ALL
-  USING (auth.user_role() IN ('owner', 'manager'))
-  WITH CHECK (auth.user_role() IN ('owner', 'manager'));
+  USING (auth.is_staff())
+  WITH CHECK (auth.is_staff());
 
 CREATE POLICY "loan_repayments: agent read own"
   ON public.loan_repayments FOR SELECT
@@ -102,23 +111,23 @@ ALTER TABLE public.vendors ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "vendors: owner+manager all"
   ON public.vendors FOR ALL
-  USING (auth.user_role() IN ('owner', 'manager'))
-  WITH CHECK (auth.user_role() IN ('owner', 'manager'));
+  USING (auth.is_staff())
+  WITH CHECK (auth.is_staff());
 
 ALTER TABLE public.vendor_transactions ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "vendor_transactions: owner+manager all"
   ON public.vendor_transactions FOR ALL
-  USING (auth.user_role() IN ('owner', 'manager'))
-  WITH CHECK (auth.user_role() IN ('owner', 'manager'));
+  USING (auth.is_staff())
+  WITH CHECK (auth.is_staff());
 
 -- ── agent_payouts ────────────────────────────────────────────
 ALTER TABLE public.agent_payouts ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "agent_payouts: owner+manager all"
   ON public.agent_payouts FOR ALL
-  USING (auth.user_role() IN ('owner', 'manager'))
-  WITH CHECK (auth.user_role() IN ('owner', 'manager'));
+  USING (auth.is_staff())
+  WITH CHECK (auth.is_staff());
 
 CREATE POLICY "agent_payouts: agent read own"
   ON public.agent_payouts FOR SELECT
@@ -132,16 +141,16 @@ ALTER TABLE public.money_receipts ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "money_receipts: owner+manager all"
   ON public.money_receipts FOR ALL
-  USING (auth.user_role() IN ('owner', 'manager'))
-  WITH CHECK (auth.user_role() IN ('owner', 'manager'));
+  USING (auth.is_staff())
+  WITH CHECK (auth.is_staff());
 
 -- ── payments ─────────────────────────────────────────────────
 ALTER TABLE public.payments ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "payments: owner+manager all"
   ON public.payments FOR ALL
-  USING (auth.user_role() IN ('owner', 'manager'))
-  WITH CHECK (auth.user_role() IN ('owner', 'manager'));
+  USING (auth.is_staff())
+  WITH CHECK (auth.is_staff());
 
 -- ── agents ───────────────────────────────────────────────────
 -- (Ensure agents table is also protected — agents should see their own row)
@@ -149,8 +158,8 @@ ALTER TABLE public.agents ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "agents: owner+manager all"
   ON public.agents FOR ALL
-  USING (auth.user_role() IN ('owner', 'manager'))
-  WITH CHECK (auth.user_role() IN ('owner', 'manager'));
+  USING (auth.is_staff())
+  WITH CHECK (auth.is_staff());
 
 CREATE POLICY "agents: agent read own row"
   ON public.agents FOR SELECT
@@ -161,8 +170,8 @@ ALTER TABLE public.candidates ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "candidates: owner+manager all"
   ON public.candidates FOR ALL
-  USING (auth.user_role() IN ('owner', 'manager'))
-  WITH CHECK (auth.user_role() IN ('owner', 'manager'));
+  USING (auth.is_staff())
+  WITH CHECK (auth.is_staff());
 
 CREATE POLICY "candidates: agent read assigned"
   ON public.candidates FOR SELECT
@@ -176,8 +185,8 @@ ALTER TABLE public.passports ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "passports: owner+manager all"
   ON public.passports FOR ALL
-  USING (auth.user_role() IN ('owner', 'manager'))
-  WITH CHECK (auth.user_role() IN ('owner', 'manager'));
+  USING (auth.is_staff())
+  WITH CHECK (auth.is_staff());
 
 CREATE POLICY "passports: agent read assigned"
   ON public.passports FOR SELECT
@@ -194,8 +203,8 @@ ALTER TABLE public.visa_applications ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "visa_applications: owner+manager all"
   ON public.visa_applications FOR ALL
-  USING (auth.user_role() IN ('owner', 'manager'))
-  WITH CHECK (auth.user_role() IN ('owner', 'manager'));
+  USING (auth.is_staff())
+  WITH CHECK (auth.is_staff());
 
 CREATE POLICY "visa_applications: agent read assigned"
   ON public.visa_applications FOR SELECT
@@ -212,8 +221,8 @@ ALTER TABLE public.invoices ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "invoices: owner+manager all"
   ON public.invoices FOR ALL
-  USING (auth.user_role() IN ('owner', 'manager'))
-  WITH CHECK (auth.user_role() IN ('owner', 'manager'));
+  USING (auth.is_staff())
+  WITH CHECK (auth.is_staff());
 
 CREATE POLICY "invoices: agent read own"
   ON public.invoices FOR SELECT
@@ -226,8 +235,8 @@ ALTER TABLE public.invoice_items ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "invoice_items: owner+manager all"
   ON public.invoice_items FOR ALL
-  USING (auth.user_role() IN ('owner', 'manager'))
-  WITH CHECK (auth.user_role() IN ('owner', 'manager'));
+  USING (auth.is_staff())
+  WITH CHECK (auth.is_staff());
 
 CREATE POLICY "invoice_items: agent read own invoices"
   ON public.invoice_items FOR SELECT
@@ -243,54 +252,54 @@ ALTER TABLE public.expenses ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "expenses: owner+manager all"
   ON public.expenses FOR ALL
-  USING (auth.user_role() IN ('owner', 'manager'))
-  WITH CHECK (auth.user_role() IN ('owner', 'manager'));
+  USING (auth.is_staff())
+  WITH CHECK (auth.is_staff());
 
 -- ── cheques ──────────────────────────────────────────────────
 ALTER TABLE public.cheques ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "cheques: owner+manager all"
   ON public.cheques FOR ALL
-  USING (auth.user_role() IN ('owner', 'manager'))
-  WITH CHECK (auth.user_role() IN ('owner', 'manager'));
+  USING (auth.is_staff())
+  WITH CHECK (auth.is_staff());
 
 -- ── payroll / employee_payroll ────────────────────────────────
 ALTER TABLE public.payroll ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "payroll: owner+manager all"
   ON public.payroll FOR ALL
-  USING (auth.user_role() IN ('owner', 'manager'))
-  WITH CHECK (auth.user_role() IN ('owner', 'manager'));
+  USING (auth.is_staff())
+  WITH CHECK (auth.is_staff());
 
 ALTER TABLE public.employee_payroll ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "employee_payroll: owner+manager all"
   ON public.employee_payroll FOR ALL
-  USING (auth.user_role() IN ('owner', 'manager'))
-  WITH CHECK (auth.user_role() IN ('owner', 'manager'));
+  USING (auth.is_staff())
+  WITH CHECK (auth.is_staff());
 
 -- ── employees ────────────────────────────────────────────────
 ALTER TABLE public.employees ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "employees: owner+manager all"
   ON public.employees FOR ALL
-  USING (auth.user_role() IN ('owner', 'manager'))
-  WITH CHECK (auth.user_role() IN ('owner', 'manager'));
+  USING (auth.is_staff())
+  WITH CHECK (auth.is_staff());
 
 -- ── refunds ──────────────────────────────────────────────────
 ALTER TABLE public.refunds ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "refunds: owner+manager all"
   ON public.refunds FOR ALL
-  USING (auth.user_role() IN ('owner', 'manager'))
-  WITH CHECK (auth.user_role() IN ('owner', 'manager'));
+  USING (auth.is_staff())
+  WITH CHECK (auth.is_staff());
 
 -- ── audit_logs / passport_workflow_logs ──────────────────────
 ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "audit_logs: owner+manager read"
   ON public.audit_logs FOR SELECT
-  USING (auth.user_role() IN ('owner', 'manager'));
+  USING (auth.is_staff());
 
 CREATE POLICY "audit_logs: service role insert"
   ON public.audit_logs FOR INSERT
@@ -300,13 +309,13 @@ ALTER TABLE public.passport_workflow_logs ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "passport_workflow_logs: owner+manager all"
   ON public.passport_workflow_logs FOR ALL
-  USING (auth.user_role() IN ('owner', 'manager'))
-  WITH CHECK (auth.user_role() IN ('owner', 'manager'));
+  USING (auth.is_staff())
+  WITH CHECK (auth.is_staff());
 
 -- ── candidate_documents ──────────────────────────────────────
 ALTER TABLE public.candidate_documents ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "candidate_documents: owner+manager all"
   ON public.candidate_documents FOR ALL
-  USING (auth.user_role() IN ('owner', 'manager'))
-  WITH CHECK (auth.user_role() IN ('owner', 'manager'));
+  USING (auth.is_staff())
+  WITH CHECK (auth.is_staff());
