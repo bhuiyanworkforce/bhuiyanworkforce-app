@@ -2,6 +2,7 @@ import PropTypes from 'prop-types'
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { Plus, X, ChevronDown, ChevronUp, AlertTriangle, RefreshCw } from 'lucide-react'
+import Modal from '../../components/Modal'
 import { LOAN_STATUS_COLOR as STATUS_COLOR } from '../../lib/constants'
 
 // STATUS_COLOR is now imported from ../../lib/constants
@@ -13,12 +14,7 @@ function AddLoanModal({ onClose, onSaved }) {
   const [error, setError] = useState('')
   const set = (k,v) => setForm(p=>({...p,[k]:v}))
 
-  // FIX: Escape key closes the modal (WCAG 2.1 SC 1.4.13)
-  useEffect(() => {
-    function handleKey(e) { if (e.key === 'Escape') onClose() }
-    document.addEventListener('keydown', handleKey)
-    return () => document.removeEventListener('keydown', handleKey)
-  }, [onClose])
+  // Modal.jsx handles ESC-to-close natively — no manual keydown listener needed.
 
   useEffect(() => {
     supabase.from('agents').select('id, full_name').then(({data})=>setAgents(data||[]))
@@ -50,45 +46,39 @@ function AddLoanModal({ onClose, onSaved }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/70 flex items-end justify-center">
-      <div className="bg-[#0D1626] border border-slate-800 rounded-t-2xl w-full max-w-lg max-h-[82vh] overflow-y-auto">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800 sticky top-0 bg-[#0D1626]">
-          <h2 className="text-slate-100 font-bold text-lg">Issue Loan</h2>
-          <button onClick={onClose}><X size={20} className="text-slate-400"/></button>
+    <Modal open onClose={onClose} title="Issue Loan" maxWidth="max-w-lg">
+      <div className="p-5 pb-10 flex flex-col gap-4">
+        {error && <p className="text-red-400 text-sm bg-red-500/10 px-4 py-2 rounded-xl">{error}</p>}
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-slate-500 font-semibold">Agent *</span>
+          <select value={form.agent_id} onChange={e=>set('agent_id',e.target.value)} className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500">
+            <option value="">— Select Agent —</option>
+            {agents.map(a=><option key={a.id} value={a.id}>{a.full_name}</option>)}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-slate-500 font-semibold">Amount (৳) *</span>
+          <input type="number" min="0" value={form.amount} onChange={e=>set('amount',e.target.value)} placeholder="0" className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500"/>
+        </label>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="flex flex-col gap-1">
+            <span className="text-xs text-slate-500 font-semibold">Issued Date</span>
+            <input type="date" value={form.issued_date} onChange={e=>set('issued_date',e.target.value)} className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500"/>
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-xs text-slate-500 font-semibold">Due Date</span>
+            <input type="date" value={form.due_date} onChange={e=>set('due_date',e.target.value)} className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500"/>
+          </label>
         </div>
-        <div className="p-5 pb-24 flex flex-col gap-4">
-          {error && <p className="text-red-400 text-sm bg-red-500/10 px-4 py-2 rounded-xl">{error}</p>}
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-slate-500 font-semibold">Agent *</span>
-            <select value={form.agent_id} onChange={e=>set('agent_id',e.target.value)} className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500">
-              <option value="">— Select Agent —</option>
-              {agents.map(a=><option key={a.id} value={a.id}>{a.full_name}</option>)}
-            </select>
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-slate-500 font-semibold">Amount (৳) *</span>
-            <input type="number" min="0" value={form.amount} onChange={e=>set('amount',e.target.value)} placeholder="0" className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500"/>
-          </label>
-          <div className="grid grid-cols-2 gap-3">
-            <label className="flex flex-col gap-1">
-              <span className="text-xs text-slate-500 font-semibold">Issued Date</span>
-              <input type="date" value={form.issued_date} onChange={e=>set('issued_date',e.target.value)} className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500"/>
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-xs text-slate-500 font-semibold">Due Date</span>
-              <input type="date" value={form.due_date} onChange={e=>set('due_date',e.target.value)} className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500"/>
-            </label>
-          </div>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-slate-500 font-semibold">Purpose</span>
-            <input value={form.purpose} onChange={e=>set('purpose',e.target.value)} placeholder="Reason for loan" className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500"/>
-          </label>
-          <button onClick={handleSave} disabled={saving} className="w-full bg-gradient-to-r from-violet-500 to-purple-600 text-white py-3 rounded-xl font-bold text-sm mt-1 disabled:opacity-50">
-            {saving ? 'Saving…' : 'Issue Loan'}
-          </button>
-        </div>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-slate-500 font-semibold">Purpose</span>
+          <input value={form.purpose} onChange={e=>set('purpose',e.target.value)} placeholder="Reason for loan" className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500"/>
+        </label>
+        <button onClick={handleSave} disabled={saving} className="w-full bg-gradient-to-r from-violet-500 to-purple-600 text-white py-3 rounded-xl font-bold text-sm mt-1 disabled:opacity-50">
+          {saving ? 'Saving…' : 'Issue Loan'}
+        </button>
       </div>
-    </div>
+    </Modal>
   )
 }
 
@@ -105,12 +95,7 @@ function RepayModal({ loan, onClose, onSaved }) {
   const [error, setError] = useState('')
   const remaining = Number.parseFloat(loan.balance || 0)
 
-  // FIX: Escape key closes the modal (WCAG 2.1 SC 1.4.13)
-  useEffect(() => {
-    function handleKey(e) { if (e.key === 'Escape') onClose() }
-    document.addEventListener('keydown', handleKey)
-    return () => document.removeEventListener('keydown', handleKey)
-  }, [onClose])
+  // Modal.jsx handles ESC-to-close natively — no manual keydown listener needed.
 
   async function handleRepay() {
     const amt = Number.parseFloat(amount)
@@ -156,38 +141,32 @@ function RepayModal({ loan, onClose, onSaved }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/70 flex items-end justify-center">
-      <div className="bg-[#0D1626] border border-slate-800 rounded-t-2xl w-full max-w-lg">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800">
-          <h2 className="text-slate-100 font-bold text-lg">Record Repayment</h2>
-          <button onClick={onClose}><X size={20} className="text-slate-400"/></button>
+    <Modal open onClose={onClose} title="Record Repayment" maxWidth="max-w-lg">
+      <div className="p-5 pb-10 flex flex-col gap-4">
+        {error && <p className="text-red-400 text-sm bg-red-500/10 px-4 py-2 rounded-xl">{error}</p>}
+        <div className="flex justify-between text-sm">
+          <span className="text-slate-400">Loan Total</span><span className="text-white font-bold">৳{Number.parseFloat(loan.amount).toLocaleString()}</span>
         </div>
-        <div className="p-5 pb-24 flex flex-col gap-4">
-          {error && <p className="text-red-400 text-sm bg-red-500/10 px-4 py-2 rounded-xl">{error}</p>}
-          <div className="flex justify-between text-sm">
-            <span className="text-slate-400">Loan Total</span><span className="text-white font-bold">৳{Number.parseFloat(loan.amount).toLocaleString()}</span>
-          </div>
-          <div className="flex justify-between text-sm">
-            <span className="text-slate-400">Remaining</span><span className="text-amber-400 font-bold">৳{remaining.toLocaleString()}</span>
-          </div>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-slate-500 font-semibold">Repayment Amount (৳)</span>
-            <input type="number" min="0" value={amount} onChange={e=>setAmount(e.target.value)} placeholder="0" className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500"/>
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-slate-500 font-semibold">Date</span>
-            <input type="date" value={date} onChange={e=>setDate(e.target.value)} className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500"/>
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-slate-500 font-semibold">Note</span>
-            <input value={note} onChange={e=>setNote(e.target.value)} placeholder="Optional" className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500"/>
-          </label>
-          <button onClick={handleRepay} disabled={saving} className="w-full bg-gradient-to-r from-emerald-500 to-teal-600 text-white py-3 rounded-xl font-bold text-sm disabled:opacity-50">
-            {saving ? 'Saving…' : 'Record Repayment'}
-          </button>
+        <div className="flex justify-between text-sm">
+          <span className="text-slate-400">Remaining</span><span className="text-amber-400 font-bold">৳{remaining.toLocaleString()}</span>
         </div>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-slate-500 font-semibold">Repayment Amount (৳)</span>
+          <input type="number" min="0" value={amount} onChange={e=>setAmount(e.target.value)} placeholder="0" className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500"/>
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-slate-500 font-semibold">Date</span>
+          <input type="date" value={date} onChange={e=>setDate(e.target.value)} className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500"/>
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-slate-500 font-semibold">Note</span>
+          <input value={note} onChange={e=>setNote(e.target.value)} placeholder="Optional" className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500"/>
+        </label>
+        <button onClick={handleRepay} disabled={saving} className="w-full bg-gradient-to-r from-emerald-500 to-teal-600 text-white py-3 rounded-xl font-bold text-sm disabled:opacity-50">
+          {saving ? 'Saving…' : 'Record Repayment'}
+        </button>
       </div>
-    </div>
+    </Modal>
   )
 }
 
