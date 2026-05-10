@@ -2,8 +2,9 @@ import PropTypes from 'prop-types'
 import { useState, useEffect } from "react";
 import { supabase } from "../../lib/supabase";
 import { Plus, X } from "lucide-react";
-import Modal from '../../components/Modal'
 import { calcAgentNet, calcEmpNet } from "../../lib/utils";
+import Modal from '../../components/Modal'
+import { Spinner } from '../../components/Skeleton'
 
 // ─── AGENT PAYROLL ────────────────────────────────────────────────────────────
 // calcAgentNet and calcEmpNet are now in src/lib/utils.js — single source of
@@ -71,63 +72,69 @@ function AddAgentPayrollModal({ onClose, onSaved }) {
   const net = calcAgentNet(form);
 
   return (
-    <Modal open onClose={onClose} title="Add Agent Payroll" maxWidth="max-w-lg">
-      <div className="p-5 pb-10 flex flex-col gap-4">
-        {error && <p className="text-red-400 text-sm bg-red-500/10 px-4 py-2 rounded-xl">{error}</p>}
-        <label className="flex flex-col gap-1">
-          <span className="text-xs text-slate-500 font-semibold">Agent *</span>
-          <select value={form.agent_id} onChange={e => set("agent_id", e.target.value)}
-            className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500">
-            <option value="">— Select Agent —</option>
-            {agents.map(a => <option key={a.id} value={a.id}>{a.full_name}</option>)}
-          </select>
-        </label>
-        <div className="grid grid-cols-2 gap-3">
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-slate-500 font-semibold">Period Start *</span>
-            <input type="date" value={form.period_start} onChange={e => set("period_start", e.target.value)}
-              className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500"/>
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-slate-500 font-semibold">Period End</span>
-            <input type="date" value={form.period_end} onChange={e => set("period_end", e.target.value)}
-              className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500"/>
-          </label>
+    <div className="fixed inset-0 z-50 bg-black/70 flex items-end justify-center">
+      <div className="bg-[#0D1626] border border-slate-800 rounded-t-2xl w-full max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800 sticky top-0 bg-[#0D1626]">
+          <h2 className="text-slate-100 font-bold text-lg">Add Agent Payroll</h2>
+          <button onClick={onClose}><X size={20} className="text-slate-400"/></button>
         </div>
-        {[["Base Amount (৳) *","base_amount"],["Commission (৳)","commission_amount"],["Allowance (৳)","allowance"],["Overtime (৳)","overtime"],["Bonus (৳)","bonus"],["Deductions (৳)","deductions"]].map(([label, field]) => (
-          <label key={field} className="flex flex-col gap-1">
-            <span className="text-xs text-slate-500 font-semibold">{label}</span>
-            <input type="number" min="0" value={form[field]} onChange={e => set(field, e.target.value)}
-              className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500"/>
+        <div className="p-5 pb-24 flex flex-col gap-4">
+          {error && <p className="text-red-400 text-sm bg-red-500/10 px-4 py-2 rounded-xl">{error}</p>}
+          <label className="flex flex-col gap-1">
+            <span className="text-xs text-slate-500 font-semibold">Agent *</span>
+            <select value={form.agent_id} onChange={e => set("agent_id", e.target.value)}
+              className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500">
+              <option value="">— Select Agent —</option>
+              {agents.map(a => <option key={a.id} value={a.id}>{a.full_name}</option>)}
+            </select>
           </label>
-        ))}
-        <label className="flex flex-col gap-1">
-          <span className="text-xs text-slate-500 font-semibold">Payment Method</span>
-          <select value={form.payment_method} onChange={e => set("payment_method", e.target.value)}
-            className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500">
-            <option value="cash">Cash</option>
-            <option value="bank">Bank Transfer</option>
-            <option value="mobile_banking">Mobile Banking</option>
-          </select>
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-xs text-slate-500 font-semibold">Status</span>
-          <select value={form.status} onChange={e => set("status", e.target.value)}
-            className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500">
-            <option value="pending">Pending</option>
-            <option value="paid">Paid</option>
-          </select>
-        </label>
-        <div className="bg-indigo-500/10 rounded-xl p-3 text-center">
-          <p className="text-xs text-slate-500">Net Amount</p>
-          <p className="text-lg font-extrabold text-indigo-400">৳{net.toLocaleString()}</p>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-slate-500 font-semibold">Period Start *</span>
+              <input type="date" value={form.period_start} onChange={e => set("period_start", e.target.value)}
+                className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500"/>
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-slate-500 font-semibold">Period End</span>
+              <input type="date" value={form.period_end} onChange={e => set("period_end", e.target.value)}
+                className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500"/>
+            </label>
+          </div>
+          {[["Base Amount (৳) *","base_amount"],["Commission (৳)","commission_amount"],["Allowance (৳)","allowance"],["Overtime (৳)","overtime"],["Bonus (৳)","bonus"],["Deductions (৳)","deductions"]].map(([label, field]) => (
+            <label key={field} className="flex flex-col gap-1">
+              <span className="text-xs text-slate-500 font-semibold">{label}</span>
+              <input type="number" min="0" value={form[field]} onChange={e => set(field, e.target.value)}
+                className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500"/>
+            </label>
+          ))}
+          <label className="flex flex-col gap-1">
+            <span className="text-xs text-slate-500 font-semibold">Payment Method</span>
+            <select value={form.payment_method} onChange={e => set("payment_method", e.target.value)}
+              className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500">
+              <option value="cash">Cash</option>
+              <option value="bank">Bank Transfer</option>
+              <option value="mobile_banking">Mobile Banking</option>
+            </select>
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-xs text-slate-500 font-semibold">Status</span>
+            <select value={form.status} onChange={e => set("status", e.target.value)}
+              className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500">
+              <option value="pending">Pending</option>
+              <option value="paid">Paid</option>
+            </select>
+          </label>
+          <div className="bg-indigo-500/10 rounded-xl p-3 text-center">
+            <p className="text-xs text-slate-500">Net Amount</p>
+            <p className="text-lg font-extrabold text-indigo-400">৳{net.toLocaleString()}</p>
+          </div>
+          <button onClick={handleSave} disabled={saving}
+            className="w-full bg-gradient-to-r from-indigo-500 to-violet-600 text-white py-3 rounded-xl font-bold text-sm disabled:opacity-50">
+            {saving ? "Saving…" : "Save Payroll"}
+          </button>
         </div>
-        <button onClick={handleSave} disabled={saving}
-          className="w-full bg-gradient-to-r from-indigo-500 to-violet-600 text-white py-3 rounded-xl font-bold text-sm disabled:opacity-50">
-          {saving ? "Saving…" : "Save Payroll"}
-        </button>
       </div>
-    </Modal>
+    </div>
   );
 }
 
@@ -299,77 +306,13 @@ function AddEmployeePayrollModal({ onClose, onSaved }) {
   const net = calcEmpNet(form);
 
   return (
-    <Modal open onClose={onClose} title="Add Employee Payroll" maxWidth="max-w-lg">
-      <div className="p-5 pb-10 flex flex-col gap-4">
-        {error && <p className="text-red-400 text-sm bg-red-500/10 px-4 py-2 rounded-xl">{error}</p>}
-        <label className="flex flex-col gap-1">
-          <span className="text-xs text-slate-500 font-semibold">Employee *</span>
-          <select value={form.employee_id} onChange={e => onEmployeeChange(e.target.value)}
-            className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500">
-            <option value="">— Select Employee —</option>
-            {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
-          </select>
-        </label>
-        <div className="grid grid-cols-2 gap-3">
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-slate-500 font-semibold">Month *</span>
-            <select value={form.month} onChange={e => set("month", e.target.value)}
-              className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500">
-              {MONTHS.map((m, i) => <option key={i+1} value={i+1}>{m}</option>)}
-            </select>
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-slate-500 font-semibold">Year *</span>
-            <input type="number" value={form.year} onChange={e => set("year", e.target.value)}
-              className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500"/>
-          </label>
+    <div className="fixed inset-0 z-50 bg-black/70 flex items-end justify-center">
+      <div className="bg-[#0D1626] border border-slate-800 rounded-t-2xl w-full max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800 sticky top-0 bg-[#0D1626]">
+          <h2 className="text-slate-100 font-bold text-lg">Add Employee Payroll</h2>
+          <button onClick={onClose}><X size={20} className="text-slate-400"/></button>
         </div>
-        {[["Basic Salary (৳) *","basic_salary"],["Bonus (৳)","bonus"],["Deduction (৳)","deduction"]].map(([label, field]) => (
-          <label key={field} className="flex flex-col gap-1">
-            <span className="text-xs text-slate-500 font-semibold">{label}</span>
-            <input type="number" min="0" value={form[field]} onChange={e => set(field, e.target.value)}
-              className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500"/>
-          </label>
-        ))}
-        <label className="flex flex-col gap-1">
-          <span className="text-xs text-slate-500 font-semibold">Payment Method</span>
-          <select value={form.payment_method} onChange={e => set("payment_method", e.target.value)}
-            className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500">
-            <option value="cash">Cash</option>
-            <option value="bank">Bank Transfer</option>
-            <option value="mobile_banking">Mobile Banking</option>
-          </select>
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-xs text-slate-500 font-semibold">Payment Date</span>
-          <input type="date" value={form.payment_date} onChange={e => set("payment_date", e.target.value)}
-            className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500"/>
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-xs text-slate-500 font-semibold">Status</span>
-          <select value={form.status} onChange={e => set("status", e.target.value)}
-            className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500">
-            <option value="pending">Pending</option>
-            <option value="paid">Paid</option>
-          </select>
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-xs text-slate-500 font-semibold">Notes</span>
-          <input type="text" value={form.notes} onChange={e => set("notes", e.target.value)}
-            placeholder="Optional"
-            className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500"/>
-        </label>
-        <div className="bg-indigo-500/10 rounded-xl p-3 text-center">
-          <p className="text-xs text-slate-500">Net Salary</p>
-          <p className="text-lg font-extrabold text-indigo-400">৳{net.toLocaleString()}</p>
-        </div>
-        <button onClick={handleSave} disabled={saving}
-          className="w-full bg-gradient-to-r from-indigo-500 to-violet-600 text-white py-3 rounded-xl font-bold text-sm disabled:opacity-50">
-          {saving ? "Saving…" : "Save Payroll"}
-        </button>
-      </div>
-    </Modal>
-  );
+        <div className="p-5 pb-24 flex flex-col gap-4">
           {error && <p className="text-red-400 text-sm bg-red-500/10 px-4 py-2 rounded-xl">{error}</p>}
           <label className="flex flex-col gap-1">
             <span className="text-xs text-slate-500 font-semibold">Employee *</span>
@@ -432,6 +375,13 @@ function AddEmployeePayrollModal({ onClose, onSaved }) {
             <p className="text-xs text-slate-500">Net Salary</p>
             <p className="text-lg font-extrabold text-indigo-400">৳{net.toLocaleString()}</p>
           </div>
+          <button onClick={handleSave} disabled={saving}
+            className="w-full bg-gradient-to-r from-indigo-500 to-violet-600 text-white py-3 rounded-xl font-bold text-sm disabled:opacity-50">
+            {saving ? "Saving…" : "Save Payroll"}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -638,7 +588,7 @@ export default function Payroll() {
             ))}
           </div>
           {agentLoading ? (
-            <div className="flex justify-center py-12"><div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"/></div>
+            <Spinner />
           ) : (
             <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
               {filteredAgent.length === 0 ? (
@@ -693,7 +643,7 @@ export default function Payroll() {
             ))}
           </div>
           {empLoading ? (
-            <div className="flex justify-center py-12"><div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"/></div>
+            <Spinner />
           ) : (
             <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
               {filteredEmp.length === 0 ? (
