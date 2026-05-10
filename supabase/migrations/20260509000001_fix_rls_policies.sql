@@ -173,7 +173,7 @@ CREATE POLICY "agents: owner+manager all"
 
 CREATE POLICY "agents: agent read own row"
   ON public.agents FOR SELECT
-  USING (user_id = auth.uid());
+  USING (profile_id = auth.uid());
 
 -- ── candidates ───────────────────────────────────────────────
 ALTER TABLE public.candidates ENABLE ROW LEVEL SECURITY;
