@@ -30,11 +30,13 @@ AS $$
 $$;
 
 -- Helper: returns true for service-role callers (e.g., API routes, edge functions).
+-- FIX: was calling itself recursively (infinite loop / stack overflow).
+-- current_setting('role') is the correct way to detect the service_role in Supabase.
 CREATE OR REPLACE FUNCTION auth.is_service_role()
 RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER
 AS $$
-  SELECT auth.is_service_role()
+  SELECT current_setting('role') = 'service_role'
 $$;
 
 -- ── profiles ────────────────────────────────────────────────
