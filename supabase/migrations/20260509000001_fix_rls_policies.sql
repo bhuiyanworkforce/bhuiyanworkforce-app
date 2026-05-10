@@ -26,7 +26,15 @@ CREATE OR REPLACE FUNCTION auth.is_staff()
 RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER
 AS $$
-  SELECT auth.is_staff()
+  SELECT role IN ('owner', 'manager') FROM public.profiles WHERE id = auth.uid()
+$$;
+
+-- Helper: returns true for service-role callers (e.g., API routes, edge functions).
+CREATE OR REPLACE FUNCTION auth.is_service_role()
+RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER
+AS $$
+  SELECT auth.is_service_role()
 $$;
 
 -- ── profiles ────────────────────────────────────────────────
@@ -51,7 +59,7 @@ CREATE POLICY "profiles: owner+manager read all"
 -- New profile rows are created by the handle_new_user trigger, not by clients.
 CREATE POLICY "profiles: service role insert"
   ON public.profiles FOR INSERT
-  WITH CHECK (auth.role() = 'service_role');
+  WITH CHECK (auth.is_service_role());
 
 -- ── loans ────────────────────────────────────────────────────
 ALTER TABLE public.loans ENABLE ROW LEVEL SECURITY;
@@ -100,7 +108,7 @@ CREATE POLICY "notifications: own all"
 -- Service role may insert notifications for any user (triggered by API routes).
 CREATE POLICY "notifications: service role insert"
   ON public.notifications FOR INSERT
-  WITH CHECK (auth.role() = 'service_role');
+  WITH CHECK (auth.is_service_role());
 
 -- ── vendor_balances (view) ───────────────────────────────────
 -- Views inherit the RLS of their underlying tables (vendors +
@@ -303,7 +311,7 @@ CREATE POLICY "audit_logs: owner+manager read"
 
 CREATE POLICY "audit_logs: service role insert"
   ON public.audit_logs FOR INSERT
-  WITH CHECK (auth.role() = 'service_role');
+  WITH CHECK (auth.is_service_role());
 
 ALTER TABLE public.passport_workflow_logs ENABLE ROW LEVEL SECURITY;
 
