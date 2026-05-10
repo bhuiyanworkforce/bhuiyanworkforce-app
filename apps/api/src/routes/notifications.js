@@ -28,7 +28,19 @@ function escHtml(s) {
     .replace(/'/g, '&#39;')
 }
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+// FIX: Replaced /^[^\s@]+@[^\s@]+\.[^\s@]+$/ which SonarCloud flags as
+// potentially vulnerable to super-linear backtracking on pathological inputs.
+// The new version uses a simple indexOf-based check — no regex, no backtracking,
+// and sufficient for the purpose of rejecting obviously invalid addresses before
+// passing them to Resend (which does its own validation anyway).
+function isValidEmail(value) {
+  const s = String(value ?? '').trim()
+  const at = s.indexOf('@')
+  if (at < 1) return false                    // no @ or starts with @
+  const domain = s.slice(at + 1)
+  const dot = domain.lastIndexOf('.')
+  return dot > 0 && dot < domain.length - 1  // domain has a dot, not at start/end
+}
 
 app.post('/send', async (c) => {
   if (!isAuthorized(c)) return c.json({ error: 'Unauthorized' }, 401)
@@ -42,7 +54,7 @@ app.post('/send', async (c) => {
     }
 
     // Validate recipient looks like an email address
-    if (!EMAIL_RE.test(String(to))) {
+    if (!isValidEmail(to)) {
       return c.json({ error: 'Invalid recipient email address' }, 400)
     }
 
