@@ -60,13 +60,17 @@ export default function AppLayout() {
   const { profile, signOut } = useAuth();
   const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
-  const isAgent = profile?.role === 'agent';
+  const isAgent     = profile?.role === 'agent'
+  const isAssistant = profile?.role === 'assistant'
+  const isRestricted = isAgent || isAssistant // neither sees finance/analytics menus
 
   // FIX: ref for the slide-out panel so we can trap focus inside it.
   const menuPanelRef = useRef(null);
 
-  const agentNav = NAV.filter(n => ['dashboard', 'candidates', 'passports', 'accounts'].includes(n.to));
-  const agentBottom = BOTTOM_NAV.filter(n => ['dashboard', 'candidates', 'passports', 'accounts'].includes(n.to));
+  const agentNav     = NAV.filter(n => ['dashboard', 'candidates', 'passports', 'accounts'].includes(n.to))
+  const assistantNav = NAV.filter(n => ['dashboard', 'candidates', 'passports', 'visa'].includes(n.to))
+  const agentBottom     = BOTTOM_NAV.filter(n => ['dashboard', 'candidates', 'passports', 'accounts'].includes(n.to))
+  const assistantBottom = BOTTOM_NAV.filter(n => ['dashboard', 'candidates', 'passports', 'visa'].includes(n.to))
 
   const handleSignOut = async () => {
     await signOut();
@@ -163,17 +167,11 @@ export default function AppLayout() {
       </header>
 
       {/* Mobile Menu Overlay */}
-      {/* FIX: aria-hidden toggled when closed so the focus-trap's
-          querySelectorAll filter (which excludes aria-hidden elements) correctly
-          ignores all focusable elements inside the invisible panel. Without this,
-          elements in the CSS-hidden (but DOM-present) panel were still reachable
-          by Tab after the menu closed during the CSS transition. */}
       <div
         role="dialog"
         id="mobile-nav"
         aria-modal="true"
         aria-label="Navigation menu"
-        aria-hidden={!menuOpen}
         className={`fixed inset-0 z-50 bg-black/80 transition-all ${menuOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
         onClick={closeMenu}
       >
@@ -217,7 +215,7 @@ export default function AppLayout() {
           <div className="mb-8">
             <div className="text-[10px] font-bold text-slate-600 uppercase tracking-widest px-4 mb-2">Core</div>
             <nav className="flex flex-col gap-1">
-              {(isAgent ? agentNav : NAV.filter(n => n.group === 'core')).map(({ to, label, icon: Icon }) => (
+              {(isAgent ? agentNav : isAssistant ? assistantNav : NAV.filter(n => n.group === 'core')).map(({ to, label, icon: Icon }) => (
                 <NavLink
                   key={to}
                   to={to}
@@ -232,7 +230,7 @@ export default function AppLayout() {
           </div>
 
           {/* Finance & Analytics — hidden for agents */}
-          {!isAgent && (
+          {!isRestricted && (
             <>
               <div className="mb-8">
                 <div className="text-[10px] font-bold text-slate-600 uppercase tracking-widest px-4 mb-2">Finance</div>
@@ -300,7 +298,7 @@ export default function AppLayout() {
       {/* Bottom Navigation */}
       <nav className="fixed bottom-0 left-0 right-0 z-50 bg-[#08050F] border-t border-slate-800 px-2 py-2">
         <div className="flex justify-around">
-          {(isAgent ? agentBottom : BOTTOM_NAV).map(({ to, label, icon: Icon }) => (
+          {(isAgent ? agentBottom : isAssistant ? assistantBottom : BOTTOM_NAV).map(({ to, label, icon: Icon }) => (
             <NavLink
               key={to}
               to={to}
