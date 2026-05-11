@@ -15,10 +15,19 @@ API_URL     = "https://api.bhuiyanworkforce.com"
 # RESEND_API_KEY
 # INTERNAL_SECRET
 
-# NOTE: Rate limiting (RATE_LIMIT_KV) is not configured here.
-# To enable it later, create a KV namespace via the Cloudflare dashboard:
-#   Workers & Pages → KV → Create namespace → copy the ID
-# Then add:
-#   [[kv_namespaces]]
-#   binding = "RATE_LIMIT_KV"
-#   id      = "<your-namespace-id>"
+# ── KV namespace for rate limiting ─────────────────────────────────────────────
+# FIX: Rate limiting was silently skipped because RATE_LIMIT_KV was not bound.
+# The checkRateLimit() function logs a warning and skips the check when the
+# binding is absent, meaning the 10-updates/60s limit was never enforced.
+#
+# ACTION REQUIRED — replace the placeholder id below with your real KV namespace:
+#   1. Cloudflare Dashboard → Workers & Pages → KV → Create namespace
+#      Name it: bhuiyanworkforce-rate-limit
+#   2. Copy the namespace ID and paste it below
+#   3. Commit and push — Wrangler will bind it automatically on next deploy
+#
+# Until you do this, rate limiting remains disabled (no functional regression).
+[[kv_namespaces]]
+binding = "RATE_LIMIT_KV"
+id      = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
+preview_id = "REPLACE_WITH_YOUR_KV_PREVIEW_NAMESPACE_ID" 
