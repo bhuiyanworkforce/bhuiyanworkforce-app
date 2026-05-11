@@ -14,6 +14,13 @@ function AddExpenseModal({ onClose, onSaved }) {
   const [error, setError] = useState('')
   const set = (k,v) => setForm(p=>({...p,[k]:v}))
 
+  // FIX: Escape key closes the modal (WCAG 2.1 SC 1.4.13)
+  useEffect(() => {
+    function handleKey(e) { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', handleKey)
+    return () => document.removeEventListener('keydown', handleKey)
+  }, [onClose])
+
   useEffect(() => {
     supabase.from('vendors').select('id,name').order('name').then(({data})=>setVendors(data||[]))
   }, [])
