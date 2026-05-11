@@ -18,7 +18,16 @@ function readSessionFromStorage() {
     const parsed = JSON.parse(raw)
     // Check token not expired
     const expiresAt = parsed?.expires_at
-    if (expiresAt && expiresAt < Math.floor(Date.now() / 1000)) {
+    // FIX: Previously a missing expires_at was treated as "valid forever".
+    // Some Supabase JS versions omit this field, causing stale/expired tokens
+    // to be accepted silently. Now we require expires_at to be present and
+    // in the future — if it's absent, we fall through to the network refresh
+    // which will either produce a valid session or sign the user out cleanly.
+    if (!expiresAt) {
+      console.warn('[Auth] Stored token has no expires_at — falling through to network refresh')
+      return null
+    }
+    if (expiresAt < Math.floor(Date.now() / 1000)) {
       console.warn('[Auth] Stored token expired, will need refresh')
       return null // expired — fall through to network refresh
     }
