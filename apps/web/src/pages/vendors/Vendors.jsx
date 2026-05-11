@@ -12,6 +12,13 @@ function AddVendorModal({ onClose, onSaved }) {
   const [error, setError] = useState('')
   const set = (k,v) => setForm(p=>({...p,[k]:v}))
 
+  // FIX: Escape key closes the modal (WCAG 2.1 SC 1.4.13)
+  useEffect(() => {
+    function handleKey(e) { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', handleKey)
+    return () => document.removeEventListener('keydown', handleKey)
+  }, [onClose])
+
   async function handleSave() {
     if (!form.name.trim()) { setError('Name is required'); return }
     setSaving(true)
@@ -74,6 +81,13 @@ AddVendorModal.propTypes = {
 function VendorDetail({ vendor, onClose }) {
   const [expenses, setExpenses] = useState([])
   const [loading, setLoading] = useState(true)
+
+  // FIX: Escape key closes the modal (WCAG 2.1 SC 1.4.13)
+  useEffect(() => {
+    function handleKey(e) { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', handleKey)
+    return () => document.removeEventListener('keydown', handleKey)
+  }, [onClose])
 
   useEffect(() => {
     supabase.from('expenses').select('*').eq('vendor_id', vendor.id).order('date', { ascending: false })
