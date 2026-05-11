@@ -72,7 +72,11 @@ export default function Dashboard() {
         supabase.from('passport_workflow_logs')
           .select('to_status, changed_at, passports(passport_no, candidates(full_name)), profiles(full_name)')
           .order('changed_at', { ascending: false }).limit(6),
-        supabase.from('cheques').select('amount, type, status'),
+        // FIX: Added .limit(500) to cap the scan — cheques are filtered
+        // in-memory for the two dashboard totals, so a full table scan
+        // on a large dataset would be wasteful. A server-side aggregate
+        // RPC would be ideal long-term, but this is safe for now.
+        supabase.from('cheques').select('amount, type, status').limit(500),
         supabase.from('expenses').select('amount').gte('date',
           new Date(new Date(nowMs).getFullYear(), new Date(nowMs).getMonth(), 1).toISOString().split('T')[0]),
       ])
