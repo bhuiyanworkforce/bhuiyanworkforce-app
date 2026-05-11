@@ -29,5 +29,5 @@ API_URL     = "https://api.bhuiyanworkforce.com"
 # Until you do this, rate limiting remains disabled (no functional regression).
 [[kv_namespaces]]
 binding = "RATE_LIMIT_KV"
-id      = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
-preview_id = "REPLACE_WITH_YOUR_KV_PREVIEW_NAMESPACE_ID" 
+id      = "dd91be6b5ef64636b762dc023a94bf43"
+preview_id = "dd91be6b5ef64636b762dc023a94bf43"
