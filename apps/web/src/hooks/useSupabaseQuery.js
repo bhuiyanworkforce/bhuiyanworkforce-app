@@ -14,7 +14,15 @@ import { useState, useEffect, useCallback } from 'react'
  * resolves to { data, error }.
  *
  * @param {() => Promise<{ data: any, error: any }>} queryFn
- * @param {any[]} deps - dependency array (same semantics as useEffect)
+ * @param {any[]} deps - dependency array (same semantics as useEffect).
+ *   IMPORTANT: every value in this array is passed directly to useCallback.
+ *   Do NOT pass object or array literals here — they create a new reference
+ *   on every render, causing useCallback to produce a new `run` function,
+ *   which triggers useEffect on every render → infinite fetch loop.
+ *   Primitive values (strings, numbers, booleans) and stable references
+ *   (from useState, useMemo, useRef) are safe.
+ *   Example — BAD:  useSupabaseQuery(fn, [{ id }])   // new object each render
+ *   Example — GOOD: useSupabaseQuery(fn, [id])        // primitive
  * @param {{ fallback?: any }} options
  */
 export function useSupabaseQuery(queryFn, deps = [], { fallback = [] } = {}) {
