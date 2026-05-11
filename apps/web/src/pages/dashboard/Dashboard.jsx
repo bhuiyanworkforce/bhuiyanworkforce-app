@@ -124,10 +124,23 @@ export default function Dashboard() {
       })
       setExpiringPassports(expiring || [])
 
+      // FIX: Previously this block ran on every dashboard load, firing an Edge
+      // Function call (and likely a push notification) for every expiring passport
+      // every single time the page mounted. A staff member opening the dashboard
+      // 10 times a day generated 10 notifications per expiring passport per day.
+      //
+      // Fix: gate each notification behind a sessionStorage flag keyed by
+      // passport_no + today's date. Within one browser session and calendar day,
+      // each passport triggers at most one notification. The flag expires
+      // automatically when the browser session ends (tab closed).
       const in30days = new Date(nowMs)
       in30days.setDate(in30days.getDate() + 30)
+      const todayKey = new Date(nowMs).toISOString().slice(0, 10) // yyyy-mm-dd
       const soonExpiring = (expiring || []).filter(p => new Date(p.expiry_date) <= in30days)
       soonExpiring.forEach(p => {
+        const flagKey = `notified_expiry:${p.passport_no}:${todayKey}`
+        if (sessionStorage.getItem(flagKey)) return // already notified this session+day
+        sessionStorage.setItem(flagKey, '1')
         supabase.functions.invoke('send-notification', {
           body: { type: 'passport_expiring', data: { candidate_name: p.candidates?.full_name || 'Unknown', passport_no: p.passport_no, expiry_date: p.expiry_date } }
         })
