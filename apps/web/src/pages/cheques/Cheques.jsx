@@ -1,5 +1,6 @@
 import PropTypes from 'prop-types'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
+import { useSupabaseQuery } from '../../hooks/useSupabaseQuery'
 import { supabase } from '../../lib/supabase'
 import { Plus, X, ChevronRight, AlertTriangle, RefreshCw } from 'lucide-react'
 import { ListSkeleton } from '../../components/Skeleton'
@@ -196,32 +197,20 @@ ChequeDetail.propTypes = {
 }
 
 export default function Cheques() {
-  const [cheques, setCheques] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
-  const [refreshing, setRefreshing] = useState(false)
   const [filter, setFilter] = useState('all')
   const [showAdd, setShowAdd] = useState(false)
   const [selected, setSelected] = useState(null)
+  const [refreshing, setRefreshing] = useState(false)
 
-  useEffect(() => { fetchCheques() }, [])
-
-  async function fetchCheques() {
-    setError(null)
-    try {
-      const { data, error: err } = await supabase.from('cheques').select('*').order('due_date', { ascending: true })
-      if (err) throw err
-      setCheques(data || [])
-    } catch {
-      setError('Failed to load cheques. Tap refresh to try again.')
-    } finally {
-      setLoading(false)
-    }
-  }
+  const { data: cheques, loading, error, refresh } = useSupabaseQuery(
+    () => supabase.from('cheques').select('*').order('due_date', { ascending: true }),
+    [],
+    { fallback: [] }
+  )
 
   async function handleRefresh() {
     setRefreshing(true)
-    await fetchCheques()
+    await refresh()
     setRefreshing(false)
   }
 
@@ -288,8 +277,8 @@ export default function Cheques() {
           )}
         </div>
       )}
-      {showAdd && <AddChequeModal onClose={()=>setShowAdd(false)} onSaved={()=>{setShowAdd(false);fetchCheques()}}/>}
-      {selected && <ChequeDetail cheque={selected} onClose={()=>setSelected(null)} onUpdated={fetchCheques}/>}
+      {showAdd && <AddChequeModal onClose={()=>setShowAdd(false)} onSaved={()=>{setShowAdd(false);refresh()}}/>}
+      {selected && <ChequeDetail cheque={selected} onClose={()=>setSelected(null)} onUpdated={refresh}/>}
     </div>
   )
 }
