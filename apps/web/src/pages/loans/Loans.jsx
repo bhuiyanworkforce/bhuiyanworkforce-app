@@ -1,5 +1,6 @@
 import PropTypes from 'prop-types'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
+import { useSupabaseQuery } from '../../hooks/useSupabaseQuery'
 import { supabase } from '../../lib/supabase'
 import { Plus, X, ChevronDown, ChevronUp, AlertTriangle, RefreshCw } from 'lucide-react'
 import { ListSkeleton } from '../../components/Skeleton'
@@ -208,36 +209,22 @@ RepayModal.propTypes = {
 }
 
 export default function Loans() {
-  const [loans, setLoans] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
-  const [refreshing, setRefreshing] = useState(false)
   const [filter, setFilter] = useState('all')
   const [showAdd, setShowAdd] = useState(false)
   const [repaying, setRepaying] = useState(null)
   const [expanded, setExpanded] = useState(null)
   const [repayments, setRepayments] = useState({})
+  const [refreshing, setRefreshing] = useState(false)
 
-  useEffect(() => { fetchLoans() }, [])
-
-  async function fetchLoans() {
-    setError(null)
-    try {
-      const { data, error: err } = await supabase
-        .from('loans').select('*, agents(id, full_name)')
-        .order('created_at', { ascending: false })
-      if (err) throw err
-      setLoans(data || [])
-    } catch {
-      setError('Failed to load loans. Tap refresh to try again.')
-    } finally {
-      setLoading(false)
-    }
-  }
+  const { data: loans, loading, error, refresh } = useSupabaseQuery(
+    () => supabase.from('loans').select('*, agents(id, full_name)').order('created_at', { ascending: false }),
+    [],
+    { fallback: [] }
+  )
 
   async function handleRefresh() {
     setRefreshing(true)
-    await fetchLoans()
+    await refresh()
     setRefreshing(false)
   }
 
@@ -369,8 +356,8 @@ export default function Loans() {
           )}
         </div>
       )}
-      {showAdd && <AddLoanModal onClose={() => setShowAdd(false)} onSaved={() => { setShowAdd(false); fetchLoans() }}/>}
-      {repaying && <RepayModal loan={repaying} onClose={() => setRepaying(null)} onSaved={() => { setRepaying(null); fetchLoans() }}/>}
+      {showAdd && <AddLoanModal onClose={() => setShowAdd(false)} onSaved={() => { setShowAdd(false); refresh() }}/>}
+      {repaying && <RepayModal loan={repaying} onClose={() => setRepaying(null)} onSaved={() => { setRepaying(null); refresh() }}/>}
     </div>
   )
 }
