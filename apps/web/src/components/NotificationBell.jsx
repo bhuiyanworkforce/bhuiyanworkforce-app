@@ -101,7 +101,10 @@ export default function NotificationBell() {
         try {
           const parsed = JSON.parse(localStorage.getItem(key) ?? 'null')
           const expiresAt = parsed?.expires_at
-          if (!expiresAt || expiresAt > Math.floor(Date.now() / 1000)) {
+          // Require expires_at to be present AND in the future.
+          // If absent, fall through to no-user path so a stale token is
+          // never silently trusted (mirrors the fix in AuthContext.jsx).
+          if (expiresAt && expiresAt > Math.floor(Date.now() / 1000)) {
             user = parsed?.user ?? null
           }
         } catch { /* ignore parse errors — fall through to no-user path */ }
