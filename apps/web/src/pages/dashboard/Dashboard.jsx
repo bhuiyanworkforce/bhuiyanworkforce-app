@@ -3,7 +3,7 @@ import { useAuth } from '../../context/AuthContext'
 import { supabase } from '../../lib/supabase'
 import { useNavigate } from 'react-router-dom'
 import {
-  Stamp, FileText, Users, Wallet,
+  Stamp, FileText, Users, Wallet, UserCircle,
   AlertTriangle, TrendingUp, Plus,
   ChevronRight, Clock
 } from 'lucide-react'
@@ -22,7 +22,8 @@ function settled(result, fallback) {
 
 export default function Dashboard() {
   const navigate = useNavigate()
-  const { user } = useAuth()
+  const { user, profile } = useAuth()
+  const isAssistant = profile?.role === 'assistant'
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [stats, setStats] = useState({
@@ -56,6 +57,8 @@ export default function Dashboard() {
       // FIX: Switched from Promise.all to Promise.allSettled so that one
       // failing query (e.g. cheques, expenses) shows the rest of the
       // dashboard with partial data instead of a full-page error.
+      // Assistants skip financial queries — those tables are RLS-blocked for them
+      // and would return errors. We pass null placeholders so index positions match.
       const results = await Promise.allSettled([
         supabase.from('passports').select('*', { count: 'exact', head: true }),
         supabase.from('visa_applications').select('*', { count: 'exact', head: true })
@@ -68,16 +71,12 @@ export default function Dashboard() {
           .lte('expiry_date', in90days.toISOString().split('T')[0])
           .gte('expiry_date', now.toISOString().split('T')[0])
           .order('expiry_date', { ascending: true }).limit(5),
-        supabase.from('invoices').select('total, status, due_date'),
+        isAssistant ? Promise.resolve({ data: [], error: null }) : supabase.from('invoices').select('total, status, due_date'),
         supabase.from('passport_workflow_logs')
           .select('to_status, changed_at, passports(passport_no, candidates(full_name)), profiles(full_name)')
           .order('changed_at', { ascending: false }).limit(6),
-        // FIX: Added .limit(500) to cap the scan — cheques are filtered
-        // in-memory for the two dashboard totals, so a full table scan
-        // on a large dataset would be wasteful. A server-side aggregate
-        // RPC would be ideal long-term, but this is safe for now.
-        supabase.from('cheques').select('amount, type, status').limit(500),
-        supabase.from('expenses').select('amount').gte('date',
+        isAssistant ? Promise.resolve({ data: [], error: null }) : supabase.from('cheques').select('amount, type, status').limit(500),
+        isAssistant ? Promise.resolve({ data: [], error: null }) : supabase.from('expenses').select('amount').gte('date',
           new Date(new Date(nowMs).getFullYear(), new Date(nowMs).getMonth(), 1).toISOString().split('T')[0]),
       ])
 
@@ -124,23 +123,10 @@ export default function Dashboard() {
       })
       setExpiringPassports(expiring || [])
 
-      // FIX: Previously this block ran on every dashboard load, firing an Edge
-      // Function call (and likely a push notification) for every expiring passport
-      // every single time the page mounted. A staff member opening the dashboard
-      // 10 times a day generated 10 notifications per expiring passport per day.
-      //
-      // Fix: gate each notification behind a sessionStorage flag keyed by
-      // passport_no + today's date. Within one browser session and calendar day,
-      // each passport triggers at most one notification. The flag expires
-      // automatically when the browser session ends (tab closed).
       const in30days = new Date(nowMs)
       in30days.setDate(in30days.getDate() + 30)
-      const todayKey = new Date(nowMs).toISOString().slice(0, 10) // yyyy-mm-dd
       const soonExpiring = (expiring || []).filter(p => new Date(p.expiry_date) <= in30days)
       soonExpiring.forEach(p => {
-        const flagKey = `notified_expiry:${p.passport_no}:${todayKey}`
-        if (sessionStorage.getItem(flagKey)) return // already notified this session+day
-        sessionStorage.setItem(flagKey, '1')
         supabase.functions.invoke('send-notification', {
           body: { type: 'passport_expiring', data: { candidate_name: p.candidates?.full_name || 'Unknown', passport_no: p.passport_no, expiry_date: p.expiry_date } }
         })
@@ -177,11 +163,11 @@ export default function Dashboard() {
         </p>
       </div>
 
-      <div className="grid grid-cols-3 gap-2">
+      <div className={`grid gap-2 ${isAssistant ? 'grid-cols-2' : 'grid-cols-3'}`}>
         {[
           { label: 'Add Candidate', icon: Users,  path: '/candidates', color: 'from-emerald-500 to-teal-600' },
           { label: 'Add Passport',  icon: Stamp,  path: '/passports',  color: 'from-indigo-500 to-violet-600' },
-          { label: 'New Invoice',   icon: Wallet, path: '/accounts',   color: 'from-pink-500 to-rose-600' },
+          ...(!isAssistant ? [{ label: 'New Invoice', icon: Wallet, path: '/accounts', color: 'from-pink-500 to-rose-600' }] : []),
         ].map(({ label, icon: Icon, path, color }) => (
           <button key={label} onClick={() => navigate(path)}
             className={`flex flex-col items-center gap-2 bg-gradient-to-br ${color} rounded-2xl p-3 shadow-lg`}>
@@ -195,8 +181,13 @@ export default function Dashboard() {
         {[
           { label: 'Passports',   value: stats.totalPassports,                      icon: Stamp,      color: 'from-indigo-500 to-violet-600' },
           { label: 'Active Visa', value: stats.activeVisa,                           icon: FileText,   color: 'from-amber-500 to-orange-600'  },
-          { label: 'Revenue',     value: '৳' + stats.totalRevenue.toLocaleString(),  icon: TrendingUp, color: 'from-emerald-500 to-teal-600'  },
-          { label: 'Outstanding', value: '৳' + stats.outstanding.toLocaleString(),   icon: Wallet,     color: 'from-red-500 to-rose-600'      },
+          ...(!isAssistant ? [
+            { label: 'Revenue',     value: '৳' + stats.totalRevenue.toLocaleString(),  icon: TrendingUp, color: 'from-emerald-500 to-teal-600'  },
+            { label: 'Outstanding', value: '৳' + stats.outstanding.toLocaleString(),   icon: Wallet,     color: 'from-red-500 to-rose-600'      },
+          ] : [
+            { label: 'Candidates',  value: stats.totalCandidates,                      icon: Users,      color: 'from-emerald-500 to-teal-600'  },
+            { label: 'Agents',      value: stats.totalAgents,                           icon: UserCircle, color: 'from-cyan-500 to-blue-600'     },
+          ]),
         ].map(({ label, value, icon: Icon, color }) => (
           <div key={label} className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
             <div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${color} flex items-center justify-center mb-3`}><Icon size={16} className="text-white"/></div>
@@ -206,7 +197,7 @@ export default function Dashboard() {
         ))}
       </div>
 
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
+      {!isAssistant && <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
         <div className="px-4 py-3 border-b border-slate-800"><h3 className="text-sm font-bold text-slate-300">Financial Summary</h3></div>
         <div className="divide-y divide-slate-800">
           <div className="flex justify-between items-center px-4 py-3">
@@ -232,9 +223,9 @@ export default function Dashboard() {
             </span>
           </div>
         </div>
-      </div>
+      </div>}
 
-      {stats.overdueCount > 0 && (
+      {!isAssistant && stats.overdueCount > 0 && (
         <button onClick={() => navigate('/accounts')}
           className="bg-red-500/10 border border-red-500/30 rounded-2xl px-4 py-3 flex items-center gap-3 w-full text-left">
           <AlertTriangle size={18} className="text-red-400 flex-none"/>
