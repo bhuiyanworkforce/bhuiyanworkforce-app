@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../../lib/supabase'
-import { Plus, X, Users, AlertCircle, RefreshCw, Shield, Mail } from 'lucide-react'
-import { Spinner, ListSkeleton } from '../../components/Skeleton'
+import { Plus, X, AlertCircle, RefreshCw, Shield, Mail, Users } from 'lucide-react'
+import { ListSkeleton } from '../../components/Skeleton'
 
 const APP_ROLES = ['manager', 'agent', 'assistant']
 
@@ -12,34 +12,54 @@ const ROLE_STYLES = {
   assistant: 'bg-amber-500/15 text-amber-400',
 }
 
+const API_BASE = import.meta.env.VITE_API_URL ?? 'https://api.bhuiyanworkforce.com'
+
+// Helper: authenticated fetch to our Cloudflare Worker API
+async function apiFetch(path, options = {}) {
+  const { data: { session } } = await supabase.auth.getSession()
+  const token = session?.access_token
+  if (!token) throw new Error('Not authenticated')
+
+  const res = await fetch(`${API_BASE}/api/v1${path}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+      ...(options.headers ?? {}),
+    },
+  })
+
+  const json = await res.json()
+  if (!res.ok) throw new Error(json.error ?? `Request failed (${res.status})`)
+  return json
+}
+
 // ── Invite Modal ──────────────────────────────────────────────────────────────
 function InviteUserModal({ onClose, onSaved }) {
-  const [form, setForm] = useState({ email: '', role: 'manager', full_name: '' })
+  const [form, setForm]     = useState({ email: '', role: 'manager', full_name: '' })
   const [saving, setSaving] = useState(false)
   const [error, setError]   = useState('')
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }))
 
   async function handleInvite() {
     if (!form.email.trim()) { setError('Email is required'); return }
-    if (!form.role)         { setError('Role is required'); return }
     setSaving(true)
     setError('')
-
-    // inviteUserByEmail passes role via raw_user_meta_data so the
-    // handle_new_user trigger picks it up and inserts it into profiles.
-    const { error: err } = await supabase.auth.admin.inviteUserByEmail(
-      form.email.trim(),
-      {
-        data: {
+    try {
+      await apiFetch('/users/invite', {
+        method: 'POST',
+        body: JSON.stringify({
+          email:     form.email.trim(),
           role:      form.role,
           full_name: form.full_name.trim() || null,
-        },
-      }
-    )
-
-    setSaving(false)
-    if (err) { setError(err.message); return }
-    onSaved()
+        }),
+      })
+      onSaved()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
@@ -112,7 +132,7 @@ function InviteUserModal({ onClose, onSaved }) {
 
 // ── Change Role Modal ─────────────────────────────────────────────────────────
 function ChangeRoleModal({ user, onClose, onSaved }) {
-  const [role, setRole]   = useState(user.role || 'manager')
+  const [role, setRole]     = useState(user.role || 'manager')
   const [saving, setSaving] = useState(false)
   const [error, setError]   = useState('')
 
@@ -120,13 +140,17 @@ function ChangeRoleModal({ user, onClose, onSaved }) {
     if (role === user.role) { onClose(); return }
     setSaving(true)
     setError('')
-    const { error: err } = await supabase
-      .from('profiles')
-      .update({ role })
-      .eq('id', user.id)
-    setSaving(false)
-    if (err) { setError(err.message); return }
-    onSaved()
+    try {
+      await apiFetch(`/users/${user.id}/role`, {
+        method: 'PATCH',
+        body: JSON.stringify({ role }),
+      })
+      onSaved()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
@@ -172,35 +196,23 @@ function ChangeRoleModal({ user, onClose, onSaved }) {
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export default function UsersPage() {
-  const [users, setUsers]         = useState([])
-  const [loading, setLoading]     = useState(true)
-  const [error, setError]         = useState('')
+  const [users, setUsers]           = useState([])
+  const [loading, setLoading]       = useState(true)
+  const [error, setError]           = useState('')
   const [showInvite, setShowInvite] = useState(false)
-  const [editUser, setEditUser]   = useState(null)
+  const [editUser, setEditUser]     = useState(null)
 
   const load = useCallback(async () => {
     setLoading(true)
     setError('')
-    // profiles table has id, full_name, role — joined via auth users via id
-    const { data, error: err } = await supabase
-      .from('profiles')
-      .select('id, full_name, role, email:id') // email comes from auth.users via trigger
-      .order('role')
-    if (err) { setError(err.message); setLoading(false); return }
-
-    // Fetch emails from auth admin API
-    const { data: authData, error: authErr } = await supabase.auth.admin.listUsers()
-    if (authErr) { setError(authErr.message); setLoading(false); return }
-
-    const emailMap = {}
-    authData?.users?.forEach(u => { emailMap[u.id] = u.email })
-
-    const merged = (data || []).map(p => ({
-      ...p,
-      email: emailMap[p.id] || '—',
-    }))
-    setUsers(merged)
-    setLoading(false)
+    try {
+      const { users: data } = await apiFetch('/users')
+      setUsers(data ?? [])
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
   }, [])
 
   useEffect(() => { load() }, [load])
