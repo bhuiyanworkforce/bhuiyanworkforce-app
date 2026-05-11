@@ -22,6 +22,13 @@ function AddRefundModal({ onClose, onSaved }) {
   const [error, setError] = useState('')
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }))
 
+  // FIX: Escape key closes the modal (WCAG 2.1 SC 1.4.13)
+  useEffect(() => {
+    function handleKey(e) { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', handleKey)
+    return () => document.removeEventListener('keydown', handleKey)
+  }, [onClose])
+
   useEffect(() => {
     supabase.from('candidates').select('id, full_name').order('full_name')
       .then(({ data }) => setCandidates(data || []))
@@ -115,6 +122,13 @@ function RefundDetail({ refund: initial, onClose, onUpdated }) {
   const [refund, setRefund] = useState(initial)
   const [updating, setUpdating] = useState(false)
   const [updateError, setUpdateError] = useState('')
+
+  // FIX: Escape key closes the modal (WCAG 2.1 SC 1.4.13)
+  useEffect(() => {
+    function handleKey(e) { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', handleKey)
+    return () => document.removeEventListener('keydown', handleKey)
+  }, [onClose])
 
   async function updateStatus(status) {
     setUpdating(true)
