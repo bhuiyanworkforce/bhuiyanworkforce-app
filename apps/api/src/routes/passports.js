@@ -67,12 +67,26 @@ async function checkRateLimit(env, userId) {
   return { allowed: true }
 }
 
+// FIX: Previously returned the raw Response without checking res.ok, so
+// Resend 4xx/5xx errors (invalid recipient, quota exceeded, etc.) were silently
+// swallowed — the status update succeeded but the agent never got the email and
+// there was no log. Now we check the response and log a warning on failure.
+// We don't fail the whole request on email error because the passport update
+// itself succeeded and reversing it would be worse than a missed email.
 async function sendEmail(env, { to, subject, html }) {
-  return fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ from: 'AgencyOS <noreply@bhuiyanworkforce.com>', to: [to], subject, html }),
-  })
+  try {
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from: 'AgencyOS <noreply@bhuiyanworkforce.com>', to: [to], subject, html }),
+    })
+    if (!res.ok) {
+      const body = await res.text().catch(() => '(unreadable)')
+      console.error(`[sendEmail] Resend error ${res.status} to ${to}: ${body}`)
+    }
+  } catch (err) {
+    console.error(`[sendEmail] Network error sending to ${to}:`, err?.message ?? err)
+  }
 }
 
 app.post('/status-update', async (c) => {
