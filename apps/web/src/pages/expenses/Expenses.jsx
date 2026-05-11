@@ -1,11 +1,11 @@
 import PropTypes from 'prop-types'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../../lib/supabase'
 import { Plus, Search, TrendingDown, X } from 'lucide-react'
 import { EXPENSE_CATEGORIES as CATEGORIES, EXPENSE_CAT_COLOR as CAT_COLOR } from '../../lib/constants'
 import { ListSkeleton } from '../../components/Skeleton'
 
-// CATEGORIES and CAT_COLOR are now imported from ../../lib/constants
+const PAGE_SIZE = 25
 
 function AddExpenseModal({ onClose, onSaved }) {
   const [form, setForm] = useState({ date: new Date().toISOString().slice(0,10), category:'other', description:'', amount:'', payment_method:'cash', reference_no:'', vendor_id:'' })
@@ -94,58 +94,85 @@ AddExpenseModal.propTypes = {
 }
 
 export default function Expenses() {
-  const [expenses, setExpenses] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [search, setSearch] = useState('')
-  const [filterCat, setFilterCat] = useState('all')
-  const [showAdd, setShowAdd] = useState(false)
+  const [expenses, setExpenses]     = useState([])
+  const [loading, setLoading]       = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [hasMore, setHasMore]       = useState(false)
+  const [offset, setOffset]         = useState(0)
+  const [total, setTotal]           = useState(0)
+  const [search, setSearch]         = useState('')
+  const [filterCat, setFilterCat]   = useState('all')
+  const [showAdd, setShowAdd]       = useState(false)
 
-  useEffect(() => { fetchExpenses() }, [])
-
-  async function fetchExpenses() {
+  const fetchExpenses = useCallback(async (newOffset = 0, searchTerm = search, cat = filterCat) => {
+    if (newOffset === 0) setLoading(true); else setLoadingMore(true)
     try {
-      const { data, error } = await supabase.from('expenses').select('*, vendors(name)').order('date', { ascending: false })
+      let q = supabase
+        .from('expenses')
+        .select('*, vendors(name)', { count: 'exact' })
+        .order('date', { ascending: false })
+        .range(newOffset, newOffset + PAGE_SIZE - 1)
+
+      if (cat !== 'all') q = q.eq('category', cat)
+      if (searchTerm)    q = q.ilike('description', `%${searchTerm}%`)
+
+      const { data, error, count } = await q
       if (error) throw error
-      setExpenses(data || [])
+
+      const rows = data || []
+      setExpenses(prev => newOffset === 0 ? rows : [...prev, ...rows])
+      setTotal(count || 0)
+      setOffset(newOffset)
+      setHasMore(newOffset + PAGE_SIZE < (count || 0))
     } catch (err) {
       console.error('[Expenses] fetchExpenses failed:', err)
-      setExpenses([])
+      if (newOffset === 0) setExpenses([])
     } finally {
       setLoading(false)
+      setLoadingMore(false)
     }
+  }, [search, filterCat])
+
+  useEffect(() => { fetchExpenses(0) }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Re-fetch from page 1 when filters change
+  function handleSearch(val) {
+    setSearch(val)
+    fetchExpenses(0, val, filterCat)
+  }
+  function handleCat(cat) {
+    setFilterCat(cat)
+    fetchExpenses(0, search, cat)
   }
 
-  const filtered = expenses.filter(e =>
-    (filterCat === 'all' || e.category === filterCat) &&
-    e.description?.toLowerCase().includes(search.toLowerCase())
-  )
-  const total = filtered.reduce((s,e) => s + Number.parseFloat(e.amount||0), 0)
+  // Running total of loaded rows (server filters, so all loaded rows match)
+  const runningTotal = expenses.reduce((s,e) => s + Number.parseFloat(e.amount||0), 0)
 
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
-        <div><h1 className="text-2xl font-extrabold text-slate-100">Expenses</h1><p className="text-slate-500 text-sm">{expenses.length} records</p></div>
+        <div><h1 className="text-2xl font-extrabold text-slate-100">Expenses</h1><p className="text-slate-500 text-sm">{total} records</p></div>
         <button onClick={()=>setShowAdd(true)} className="flex items-center gap-2 bg-gradient-to-r from-rose-500 to-pink-600 text-white px-4 py-2.5 rounded-xl text-sm font-bold shadow-lg"><Plus size={16}/> Add</button>
       </div>
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex items-center gap-3">
         <div className="w-10 h-10 rounded-xl bg-rose-500/15 flex items-center justify-center flex-none"><TrendingDown size={20} className="text-rose-400"/></div>
-        <div><p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">Total Expenses</p><p className="text-xl font-extrabold text-rose-400">৳{total.toLocaleString()}</p></div>
+        <div><p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">Total Expenses{(search || filterCat !== 'all') ? ' (filtered)' : ''}</p><p className="text-xl font-extrabold text-rose-400">৳{runningTotal.toLocaleString()}</p></div>
       </div>
       <div className="flex gap-2 overflow-x-auto pb-1">
         {['all',...CATEGORIES].map(c=>(
-          <button key={c} onClick={()=>setFilterCat(c)} className={`flex-none px-3 py-1.5 rounded-full text-xs font-bold capitalize transition-colors ${filterCat===c?'bg-indigo-500 text-white':'bg-slate-800 text-slate-400'}`}>{c.replaceAll('_',' ')}</button>
+          <button key={c} onClick={()=>handleCat(c)} className={`flex-none px-3 py-1.5 rounded-full text-xs font-bold capitalize transition-colors ${filterCat===c?'bg-indigo-500 text-white':'bg-slate-800 text-slate-400'}`}>{c.replaceAll('_',' ')}</button>
         ))}
       </div>
       <div className="relative">
         <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500"/>
         <label htmlFor="expense-search" className="sr-only">Search expenses</label>
-        <input id="expense-search" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search expenses..." className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-9 pr-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500"/>
+        <input id="expense-search" value={search} onChange={e=>handleSearch(e.target.value)} placeholder="Search expenses..." className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-9 pr-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500"/>
       </div>
       {loading ? <ListSkeleton rows={6} hasSearch={false} hasTabs={false} /> : (
         <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
-          {filtered.length === 0 ? <p className="text-center text-slate-600 py-12 text-sm">No expenses found</p> : (
-            <ul>{filtered.map((e,i)=>(
-              <li key={e.id} className={`flex items-center gap-3 px-4 py-4 ${i<filtered.length-1?'border-b border-slate-800':''}`}>
+          {expenses.length === 0 ? <p className="text-center text-slate-600 py-12 text-sm">No expenses found</p> : (
+            <ul>{expenses.map((e,i)=>(
+              <li key={e.id} className={`flex items-center gap-3 px-4 py-4 ${i<expenses.length-1?'border-b border-slate-800':''}`}>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-0.5">
                     <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${CAT_COLOR[e.category]||CAT_COLOR.other}`}>{e.category?.replaceAll('_',' ')}</span>
@@ -160,7 +187,15 @@ export default function Expenses() {
           )}
         </div>
       )}
-      {showAdd && <AddExpenseModal onClose={()=>setShowAdd(false)} onSaved={()=>{setShowAdd(false);fetchExpenses()}}/>}
+      {hasMore && (
+        <button
+          onClick={() => fetchExpenses(offset + PAGE_SIZE)}
+          disabled={loadingMore}
+          className="w-full py-3 rounded-xl bg-slate-800 text-slate-300 text-sm font-bold disabled:opacity-50">
+          {loadingMore ? 'Loading…' : `Load More (${total - expenses.length} remaining)`}
+        </button>
+      )}
+      {showAdd && <AddExpenseModal onClose={()=>setShowAdd(false)} onSaved={()=>{setShowAdd(false);fetchExpenses(0)}}/>}
     </div>
   )
 }
