@@ -13,6 +13,13 @@ function AddChequeModal({ onClose, onSaved }) {
   const [error, setError] = useState('')
   const set = (k,v) => setForm(p=>({...p,[k]:v}))
 
+  // FIX: Escape key closes the modal (WCAG 2.1 SC 1.4.13)
+  useEffect(() => {
+    function handleKey(e) { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', handleKey)
+    return () => document.removeEventListener('keydown', handleKey)
+  }, [onClose])
+
   async function handleSave() {
     if (!form.cheque_no || !form.party_name || !form.amount || !form.due_date) { setError('Cheque no, party, amount and due date required'); return }
     setSaving(true)
@@ -88,8 +95,14 @@ function ChequeDetail({ cheque: initial, onClose, onUpdated }) {
   const [cheque, setCheque] = useState(initial)
   const [updating, setUpdating] = useState(false)
 
+  // FIX: Escape key closes the modal (WCAG 2.1 SC 1.4.13)
+  useEffect(() => {
+    function handleKey(e) { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', handleKey)
+    return () => document.removeEventListener('keydown', handleKey)
+  }, [onClose])
+
   async function updateStatus(status) {
-    setUpdating(true)
     await supabase.from('cheques').update({ status }).eq('id', cheque.id)
     if (status === 'cleared' && cheque.type === 'payable') {
       await supabase.from('expenses').insert({
