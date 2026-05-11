@@ -31,16 +31,18 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         navigateFallback: '/index.html',
         navigateFallbackDenylist: [DENY_INTERNAL_PATHS, DENY_FILE_EXTENSIONS],
-        runtimeCaching: [
-          {
-            urlPattern: ({ request }) => request.mode === 'navigate',
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'navigation-cache',
-              networkTimeoutSeconds: 5,
-            },
-          },
-        ],
+        // FIX: The previous config added a NetworkFirst runtimeCaching rule for
+        // navigate requests ON TOP of navigateFallback. This created a conflict:
+        // Workbox's navigate handler and the runtime cache both tried to handle
+        // the same request. On refresh, the SW intercepted the navigation,
+        // the NetworkFirst handler timed out (5s), then tried the cache — but
+        // the cache didn't have the route — and fell through to ERR_FAILED
+        // instead of serving index.html via navigateFallback.
+        //
+        // navigateFallback already handles the SPA routing correctly on its own.
+        // The runtime navigate cache is removed — it was fighting navigateFallback
+        // and adding no benefit since index.html is already precached via globPatterns.
+        runtimeCaching: [],
       },
       manifest: {
         name: 'Bhuiyan Workforce',
