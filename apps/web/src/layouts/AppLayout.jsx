@@ -5,7 +5,7 @@ import {
   Wallet, LogOut, Menu, X, UserCircle,
   Settings, BarChart2, TrendingDown, Building2,
   Banknote, CreditCard, DollarSign, RotateCcw,
-  ClipboardList, Briefcase
+  ClipboardList, Briefcase, Shield
 } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import NotificationBell from '../components/NotificationBell';
@@ -19,6 +19,7 @@ const NAV = [
   { to: 'candidates', label: 'Candidates', icon: Users, group: 'core' },
   { to: 'agents', label: 'Agents', icon: UserCircle, group: 'core' },
   { to: 'employees', label: 'Employees', icon: Briefcase, group: 'core' },
+  { to: 'users', label: 'Users', icon: Shield, group: 'core' },
   { to: 'accounts', label: 'Accounts', icon: Wallet, group: 'finance' },
   { to: 'expenses', label: 'Expenses', icon: TrendingDown, group: 'finance' },
   { to: 'vendors', label: 'Vendors', icon: Building2, group: 'finance' },
@@ -60,6 +61,7 @@ export default function AppLayout() {
   const { profile, signOut } = useAuth();
   const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
+  const isOwner     = profile?.role === 'owner'
   const isAgent     = profile?.role === 'agent'
   const isAssistant = profile?.role === 'assistant'
   const isRestricted = isAgent || isAssistant // neither sees finance/analytics menus
@@ -67,8 +69,12 @@ export default function AppLayout() {
   // FIX: ref for the slide-out panel so we can trap focus inside it.
   const menuPanelRef = useRef(null);
 
-  const agentNav     = NAV.filter(n => ['dashboard', 'candidates', 'passports', 'accounts'].includes(n.to))
-  const assistantNav = NAV.filter(n => ['dashboard', 'candidates', 'passports', 'visa'].includes(n.to))
+  // Owner sees everything including Users. Manager sees core (minus Users) + finance + analytics.
+  // Agent and assistant see their restricted subsets only.
+  const ownerCoreNav    = NAV.filter(n => n.group === 'core')
+  const managerCoreNav  = NAV.filter(n => n.group === 'core' && n.to !== 'users')
+  const agentNav        = NAV.filter(n => ['dashboard', 'candidates', 'passports', 'accounts'].includes(n.to))
+  const assistantNav    = NAV.filter(n => ['dashboard', 'candidates', 'passports', 'visa'].includes(n.to))
   const agentBottom     = BOTTOM_NAV.filter(n => ['dashboard', 'candidates', 'passports', 'accounts'].includes(n.to))
   const assistantBottom = BOTTOM_NAV.filter(n => ['dashboard', 'candidates', 'passports', 'visa'].includes(n.to))
 
@@ -141,6 +147,9 @@ export default function AppLayout() {
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [menuOpen]);
+
+  // Resolve which core nav list to show based on role
+  const coreNav = isAgent ? agentNav : isAssistant ? assistantNav : isOwner ? ownerCoreNav : managerCoreNav
 
   return (
     <div className="min-h-screen bg-[#05030A] flex flex-col">
@@ -215,7 +224,7 @@ export default function AppLayout() {
           <div className="mb-8">
             <div className="text-[10px] font-bold text-slate-600 uppercase tracking-widest px-4 mb-2">Core</div>
             <nav className="flex flex-col gap-1">
-              {(isAgent ? agentNav : isAssistant ? assistantNav : NAV.filter(n => n.group === 'core')).map(({ to, label, icon: Icon }) => (
+              {coreNav.map(({ to, label, icon: Icon }) => (
                 <NavLink
                   key={to}
                   to={to}
@@ -229,7 +238,7 @@ export default function AppLayout() {
             </nav>
           </div>
 
-          {/* Finance & Analytics — hidden for agents */}
+          {/* Finance & Analytics — hidden for agents and assistants */}
           {!isRestricted && (
             <>
               <div className="mb-8">
