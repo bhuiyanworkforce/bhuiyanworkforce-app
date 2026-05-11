@@ -22,7 +22,7 @@ function AddLoanModal({ onClose, onSaved }) {
   }, [onClose])
 
   useEffect(() => {
-    supabase.from('agents').select('id, full_name').then(({data})=>setAgents(data||[]))
+    supabase.from('agents').select('id, full_name, profile_id').then(({data})=>setAgents(data||[]))
   }, [])
 
   async function handleSave() {
@@ -40,9 +40,14 @@ function AddLoanModal({ onClose, onSaved }) {
     const { data: { session } } = await supabase.auth.getSession()
     const user = session?.user
     const agent = agents.find(a => a.id === form.agent_id)
-    if (user) {
+    // FIX: Notification should go to the agent whose loan was issued,
+    // not the staff member who created it. Use the agent's profile_id so
+    // the notification appears in their bell. Fall back to the logged-in
+    // user's id if the agent has no linked profile yet.
+    const notifyUserId = agent?.profile_id ?? user?.id
+    if (notifyUserId) {
       await supabase.from('notifications').insert({
-        user_id: user.id, title: 'Loan Issued',
+        user_id: notifyUserId, title: 'Loan Issued',
         message: `৳${Number.parseFloat(form.amount).toLocaleString()} loan issued to ${agent?.full_name || 'agent'}`,
         type: 'warning', is_read: false,
       })
