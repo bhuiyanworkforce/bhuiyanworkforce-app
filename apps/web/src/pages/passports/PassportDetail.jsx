@@ -19,7 +19,19 @@ const WORKFLOW = [
 ]
 
 const STATUS_INDEX = Object.fromEntries(WORKFLOW.map((s, i) => [s.key, i]))
+
+// FIX: Previously a missing VITE_API_URL would silently produce
+// fetch("undefined/api/v1/...") — a confusing network error with no
+// indication of the real cause. Now we log a clear message at module
+// load time so the problem is immediately obvious in the console.
 const API_URL = import.meta.env.VITE_API_URL
+if (!API_URL) {
+  console.error(
+    '[PassportDetail] VITE_API_URL is not set.\n' +
+    'Add it to apps/web/.env:\n' +
+    '  VITE_API_URL=https://api.bhuiyanworkforce.com'
+  )
+}
 
 // Moved to outer scope (SonarCloud: move getStageLabelClass to outer scope)
 function getStageLabelClass(isDone, isCurrent) {
@@ -97,6 +109,7 @@ export default function PassportDetail({ passport: initialPassport, onClose, onU
     // On failure, we surface the error to the user instead of silently bypassing
     // security controls.
     try {
+      if (!API_URL) throw new Error('API URL is not configured. Check VITE_API_URL in your .env file.')
       const res = await fetch(`${API_URL}/api/v1/passports/status-update`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token}` },
