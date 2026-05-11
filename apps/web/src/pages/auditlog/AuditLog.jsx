@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../../lib/supabase'
 import { ChevronDown, ChevronUp, AlertTriangle, RefreshCw } from 'lucide-react'
 import { Spinner } from '../../components/Skeleton'
@@ -17,7 +17,13 @@ import { Spinner } from '../../components/Skeleton'
 //     swallowed.
 //   - `fetchLogs` is exposed to the Retry button so the user can recover without
 //     a full page reload.
+//
+// PAGINATION FIX: The previous hard .limit(100) silently truncated logs with no
+// indication that more existed. Replaced with server-side .range() pagination
+// and a Load More button showing the remaining count.
 // ─────────────────────────────────────────────────────────────────────────────
+
+const PAGE_SIZE = 50
 
 function getChanges(l) {
   if (l.action !== 'UPDATE' || !l.old_data || !l.new_data) return []
@@ -27,39 +33,57 @@ function getChanges(l) {
 }
 
 export default function AuditLog() {
-  const [logs, setLogs] = useState([])
+  const [logs, setLogs]               = useState([])
   const [filterTable, setFilterTable] = useState('all')
   const [filterAction, setFilterAction] = useState('all')
-  const [expanded, setExpanded] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
+  const [expanded, setExpanded]       = useState(null)
+  const [loading, setLoading]         = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [error, setError]             = useState(null)
+  const [offset, setOffset]           = useState(0)
+  const [total, setTotal]             = useState(0)
+  const [hasMore, setHasMore]         = useState(false)
 
-  useEffect(() => { fetchLogs() }, [filterTable, filterAction])
-
-  async function fetchLogs() {
-    setLoading(true)
+  const fetchLogs = useCallback(async (newOffset = 0, tableFilter = filterTable, actionFilter = filterAction) => {
+    if (newOffset === 0) setLoading(true); else setLoadingMore(true)
     setError(null)
 
     try {
       let query = supabase
         .from('audit_logs')
-        .select('*')
+        .select('*', { count: 'exact' })
         .order('created_at', { ascending: false })
-        .limit(100)
+        .range(newOffset, newOffset + PAGE_SIZE - 1)
 
-      if (filterTable !== 'all') query = query.eq('table_name', filterTable)
-      if (filterAction !== 'all') query = query.eq('action', filterAction)
+      if (tableFilter !== 'all')  query = query.eq('table_name', tableFilter)
+      if (actionFilter !== 'all') query = query.eq('action', actionFilter)
 
-      const { data, error: dbError } = await query
+      const { data, error: dbError, count } = await query
 
       if (dbError) throw dbError
-      setLogs(data || [])
+      const rows = data || []
+      setLogs(prev => newOffset === 0 ? rows : [...prev, ...rows])
+      setTotal(count || 0)
+      setOffset(newOffset)
+      setHasMore(newOffset + PAGE_SIZE < (count || 0))
     } catch (err) {
       console.error('AuditLog fetchLogs failed:', err)
       setError('Failed to load audit logs. Check your connection and try again.')
     } finally {
       setLoading(false)
+      setLoadingMore(false)
     }
+  }, [filterTable, filterAction])
+
+  useEffect(() => { fetchLogs(0) }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  function handleTableFilter(t) {
+    setFilterTable(t)
+    fetchLogs(0, t, filterAction)
+  }
+  function handleActionFilter(a) {
+    setFilterAction(a)
+    fetchLogs(0, filterTable, a)
   }
 
   const tables = ['all', 'invoices', 'passports', 'payroll', 'refunds', 'expenses', 'candidates', 'loans', 'cheques']
@@ -74,10 +98,10 @@ export default function AuditLog() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-extrabold text-slate-100">Audit Log</h1>
-          <p className="text-slate-500 text-sm">Tap any entry to expand details</p>
+          <p className="text-slate-500 text-sm">{total > 0 ? `${total} entries` : 'Tap any entry to expand details'}</p>
         </div>
         <button
-          onClick={fetchLogs}
+          onClick={() => fetchLogs(0)}
           disabled={loading}
           className="p-2 rounded-xl bg-slate-800 text-slate-400 disabled:opacity-50"
           aria-label="Refresh audit log"
@@ -88,7 +112,7 @@ export default function AuditLog() {
 
       <div className="flex gap-2 overflow-x-auto pb-1">
         {tables.map(t => (
-          <button key={t} onClick={() => setFilterTable(t)}
+          <button key={t} onClick={() => handleTableFilter(t)}
             className={`px-3 py-1.5 rounded-full text-xs whitespace-nowrap font-bold ${
               filterTable === t ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-400'
             }`}>
@@ -99,7 +123,7 @@ export default function AuditLog() {
 
       <div className="flex gap-2">
         {['all', 'INSERT', 'UPDATE', 'DELETE'].map(a => (
-          <button key={a} onClick={() => setFilterAction(a)}
+          <button key={a} onClick={() => handleActionFilter(a)}
             className={`px-3 py-1.5 rounded-full text-xs font-bold ${
               filterAction === a ? 'bg-slate-200 text-slate-900' : 'bg-slate-800 text-slate-400'
             }`}>
@@ -117,7 +141,7 @@ export default function AuditLog() {
           <AlertTriangle size={28} className="text-red-400" />
           <p className="text-red-400 text-sm">{error}</p>
           <button
-            onClick={fetchLogs}
+            onClick={() => fetchLogs(0)}
             className="bg-indigo-500 text-white font-bold px-5 py-2.5 rounded-xl text-sm">
             Retry
           </button>
@@ -133,89 +157,99 @@ export default function AuditLog() {
 
       {/* ── Results ── */}
       {!loading && !error && logs.length > 0 && (
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
-          <ul>
-            {logs.map((l, i) => {
-              const changes = getChanges(l)
-              const isOpen = expanded === l.id
-              return (
-                <li key={l.id} className={`${i < logs.length - 1 ? 'border-b border-slate-800' : ''}`}>
-                  <button
-                    type="button"
-                    onClick={() => setExpanded(isOpen ? null : l.id)}
-                    className="w-full flex items-center justify-between px-4 py-3 text-left active:bg-slate-800 transition-colors"
-                  >
-                    <div className="flex gap-2 items-center flex-1 min-w-0">
-                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold flex-none ${actionColor[l.action] || 'bg-slate-700 text-slate-300'}`}>
-                        {l.action}
-                      </span>
-                      <span className="text-sm font-semibold text-slate-300 truncate">{l.table_name}</span>
-                    </div>
-                    <div className="flex items-center gap-2 flex-none">
-                      <span className="text-xs text-slate-500">{new Date(l.created_at).toLocaleDateString()}</span>
-                      {isOpen
-                        ? <ChevronUp size={14} className="text-slate-500" />
-                        : <ChevronDown size={14} className="text-slate-500" />
-                      }
-                    </div>
-                  </button>
+        <>
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
+            <ul>
+              {logs.map((l, i) => {
+                const changes = getChanges(l)
+                const isOpen = expanded === l.id
+                return (
+                  <li key={l.id} className={`${i < logs.length - 1 ? 'border-b border-slate-800' : ''}`}>
+                    <button
+                      type="button"
+                      onClick={() => setExpanded(isOpen ? null : l.id)}
+                      className="w-full flex items-center justify-between px-4 py-3 text-left active:bg-slate-800 transition-colors"
+                    >
+                      <div className="flex gap-2 items-center flex-1 min-w-0">
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold flex-none ${actionColor[l.action] || 'bg-slate-700 text-slate-300'}`}>
+                          {l.action}
+                        </span>
+                        <span className="text-sm font-semibold text-slate-300 truncate">{l.table_name}</span>
+                      </div>
+                      <div className="flex items-center gap-2 flex-none">
+                        <span className="text-xs text-slate-500">{new Date(l.created_at).toLocaleDateString()}</span>
+                        {isOpen
+                          ? <ChevronUp size={14} className="text-slate-500" />
+                          : <ChevronDown size={14} className="text-slate-500" />
+                        }
+                      </div>
+                    </button>
 
-                  {isOpen && (
-                    <div className="px-4 pb-3 bg-slate-800/30">
-                      <p className="text-[10px] text-slate-500 font-mono mb-2">{new Date(l.created_at).toLocaleString()}</p>
-                      {l.record_id && <p className="text-xs text-slate-500 mb-2 font-mono">ID: {l.record_id}</p>}
+                    {isOpen && (
+                      <div className="px-4 pb-3 bg-slate-800/30">
+                        <p className="text-[10px] text-slate-500 font-mono mb-2">{new Date(l.created_at).toLocaleString()}</p>
+                        {l.record_id && <p className="text-xs text-slate-500 mb-2 font-mono">ID: {l.record_id}</p>}
 
-                      {l.action === 'INSERT' && l.new_data && (
-                        <div>
-                          <p className="text-xs font-bold text-emerald-400 mb-1">New Record:</p>
-                          {Object.entries(l.new_data)
-                            .filter(([k]) => !['id', 'created_at', 'updated_at'].includes(k))
-                            .map(([k, v]) => (
-                              <div key={k} className="flex gap-2 text-xs text-slate-400 mb-0.5">
-                                <span className="text-slate-500 font-medium w-24 flex-none">{k}:</span>
-                                <span className="truncate">{String(v ?? '—')}</span>
+                        {l.action === 'INSERT' && l.new_data && (
+                          <div>
+                            <p className="text-xs font-bold text-emerald-400 mb-1">New Record:</p>
+                            {Object.entries(l.new_data)
+                              .filter(([k]) => !['id', 'created_at', 'updated_at'].includes(k))
+                              .map(([k, v]) => (
+                                <div key={k} className="flex gap-2 text-xs text-slate-400 mb-0.5">
+                                  <span className="text-slate-500 font-medium w-24 flex-none">{k}:</span>
+                                  <span className="truncate">{String(v ?? '—')}</span>
+                                </div>
+                              ))}
+                          </div>
+                        )}
+
+                        {l.action === 'UPDATE' && changes.length > 0 && (
+                          <div>
+                            <p className="text-xs font-bold text-indigo-400 mb-1">Changes:</p>
+                            {changes.map(k => (
+                              <div key={k} className="text-xs mb-1">
+                                <span className="text-slate-500 font-medium">{k}: </span>
+                                <span className="text-red-400 line-through mr-1">{String(l.old_data[k] ?? '—')}</span>
+                                <span className="text-emerald-400">{String(l.new_data[k] ?? '—')}</span>
                               </div>
                             ))}
-                        </div>
-                      )}
+                          </div>
+                        )}
 
-                      {l.action === 'UPDATE' && changes.length > 0 && (
-                        <div>
-                          <p className="text-xs font-bold text-indigo-400 mb-1">Changes:</p>
-                          {changes.map(k => (
-                            <div key={k} className="text-xs mb-1">
-                              <span className="text-slate-500 font-medium">{k}: </span>
-                              <span className="text-red-400 line-through mr-1">{String(l.old_data[k] ?? '—')}</span>
-                              <span className="text-emerald-400">{String(l.new_data[k] ?? '—')}</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                        {l.action === 'DELETE' && l.old_data && (
+                          <div>
+                            <p className="text-xs font-bold text-red-400 mb-1">Deleted Record:</p>
+                            {Object.entries(l.old_data)
+                              .filter(([k]) => !['id', 'created_at', 'updated_at'].includes(k))
+                              .map(([k, v]) => (
+                                <div key={k} className="flex gap-2 text-xs text-slate-400 mb-0.5">
+                                  <span className="text-slate-500 font-medium w-24 flex-none">{k}:</span>
+                                  <span className="truncate">{String(v ?? '—')}</span>
+                                </div>
+                              ))}
+                          </div>
+                        )}
 
-                      {l.action === 'DELETE' && l.old_data && (
-                        <div>
-                          <p className="text-xs font-bold text-red-400 mb-1">Deleted Record:</p>
-                          {Object.entries(l.old_data)
-                            .filter(([k]) => !['id', 'created_at', 'updated_at'].includes(k))
-                            .map(([k, v]) => (
-                              <div key={k} className="flex gap-2 text-xs text-slate-400 mb-0.5">
-                                <span className="text-slate-500 font-medium w-24 flex-none">{k}:</span>
-                                <span className="truncate">{String(v ?? '—')}</span>
-                              </div>
-                            ))}
-                        </div>
-                      )}
-
-                      {l.action === 'UPDATE' && changes.length === 0 && (
-                        <p className="text-xs text-slate-600">No visible field changes</p>
-                      )}
-                    </div>
-                  )}
-                </li>
-              )
-            })}
-          </ul>
-        </div>
+                        {l.action === 'UPDATE' && changes.length === 0 && (
+                          <p className="text-xs text-slate-600">No visible field changes</p>
+                        )}
+                      </div>
+                    )}
+                  </li>
+                )
+              })}
+            </ul>
+          </div>
+          {hasMore && (
+            <button
+              onClick={() => fetchLogs(offset + PAGE_SIZE)}
+              disabled={loadingMore}
+              className="w-full py-3 rounded-xl bg-slate-800 text-slate-300 text-sm font-bold disabled:opacity-50">
+              {loadingMore ? 'Loading…' : `Load More (${total - logs.length} remaining)`}
+            </button>
+          )}
+        </>
       )}
     </div>
   )
