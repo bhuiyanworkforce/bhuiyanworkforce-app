@@ -74,10 +74,19 @@ class ErrorBoundary extends Component {
 // the flag already set and skip the reload — showing a blank screen instead of
 // recovering. Now each import path gets its own key so every route can retry
 // independently.
-function lazyWithRetry(importFn) {
-  // Derive a stable short key from the import function's source string.
-  // e.g. () => import('./pages/dashboard/Dashboard') → 'dashboard/Dashboard'
-  const routeKey = importFn.toString().match(/['"]([^'"]+)['"]/)?.[1] ?? importFn.toString()
+// ── Lazy pages with chunk-error retry ─────────────────────────────────────────
+// FIX: The previous implementation derived the sessionStorage key at runtime by
+// calling importFn.toString() and regex-matching the import path out of it.
+// After Vite production minification, the arrow function body collapses to
+// something like `()=>n("./Dashboard-BxQ1.js")` — the hash changes every build,
+// making the key unstable. In the worst case (Rollup inlines very short fns),
+// toString() returns `t=>n(t)`, losing the path entirely and causing the full
+// stringified function to be used as a key, which can exceed sessionStorage
+// key-length limits in some browsers.
+//
+// Fix: accept an explicit stable routeKey string as a second argument so keys
+// are always predictable, human-readable, and build-hash-independent.
+function lazyWithRetry(importFn, routeKey) {
   const storageKey = `chunk_reload:${routeKey}`
 
   return lazy(() =>
@@ -101,23 +110,23 @@ function lazyWithRetry(importFn) {
   )
 }
 
-const Dashboard        = lazyWithRetry(() => import('./pages/dashboard/Dashboard'))
-const Passports        = lazyWithRetry(() => import('./pages/passports/Passports'))
-const VisaApplications = lazyWithRetry(() => import('./pages/visa/VisaApplications'))
-const Agents           = lazyWithRetry(() => import('./pages/agents/Agents'))
-const Accounts         = lazyWithRetry(() => import('./pages/accounts/Accounts'))
-const Candidates       = lazyWithRetry(() => import('./pages/candidates/Candidates'))
-const Profile          = lazyWithRetry(() => import('./pages/profile/Profile'))
-const Reports          = lazyWithRetry(() => import('./pages/reports/Reports'))
-const Expenses         = lazyWithRetry(() => import('./pages/expenses/Expenses'))
-const Vendors          = lazyWithRetry(() => import('./pages/vendors/Vendors'))
-const Loans            = lazyWithRetry(() => import('./pages/loans/Loans'))
-const Cheques          = lazyWithRetry(() => import('./pages/cheques/Cheques'))
-const Payroll          = lazyWithRetry(() => import('./pages/payroll/Payroll'))
-const Refunds          = lazyWithRetry(() => import('./pages/refunds/Refunds'))
-const AuditLog         = lazyWithRetry(() => import('./pages/auditlog/AuditLog'))
-const Employees        = lazyWithRetry(() => import('./pages/employees/Employees'))
-const Login            = lazyWithRetry(() => import('./pages/auth/Login'))
+const Dashboard        = lazyWithRetry(() => import('./pages/dashboard/Dashboard'),         'dashboard')
+const Passports        = lazyWithRetry(() => import('./pages/passports/Passports'),         'passports')
+const VisaApplications = lazyWithRetry(() => import('./pages/visa/VisaApplications'),       'visa')
+const Agents           = lazyWithRetry(() => import('./pages/agents/Agents'),               'agents')
+const Accounts         = lazyWithRetry(() => import('./pages/accounts/Accounts'),           'accounts')
+const Candidates       = lazyWithRetry(() => import('./pages/candidates/Candidates'),       'candidates')
+const Profile          = lazyWithRetry(() => import('./pages/profile/Profile'),             'profile')
+const Reports          = lazyWithRetry(() => import('./pages/reports/Reports'),             'reports')
+const Expenses         = lazyWithRetry(() => import('./pages/expenses/Expenses'),           'expenses')
+const Vendors          = lazyWithRetry(() => import('./pages/vendors/Vendors'),             'vendors')
+const Loans            = lazyWithRetry(() => import('./pages/loans/Loans'),                 'loans')
+const Cheques          = lazyWithRetry(() => import('./pages/cheques/Cheques'),             'cheques')
+const Payroll          = lazyWithRetry(() => import('./pages/payroll/Payroll'),             'payroll')
+const Refunds          = lazyWithRetry(() => import('./pages/refunds/Refunds'),             'refunds')
+const AuditLog         = lazyWithRetry(() => import('./pages/auditlog/AuditLog'),           'audit-log')
+const Employees        = lazyWithRetry(() => import('./pages/employees/Employees'),         'employees')
+const Login            = lazyWithRetry(() => import('./pages/auth/Login'),                  'login')
 
 function PageSpinner() {
   return (
