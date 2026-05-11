@@ -163,11 +163,17 @@ export default function AppLayout() {
       </header>
 
       {/* Mobile Menu Overlay */}
+      {/* FIX: aria-hidden toggled when closed so the focus-trap's
+          querySelectorAll filter (which excludes aria-hidden elements) correctly
+          ignores all focusable elements inside the invisible panel. Without this,
+          elements in the CSS-hidden (but DOM-present) panel were still reachable
+          by Tab after the menu closed during the CSS transition. */}
       <div
         role="dialog"
         id="mobile-nav"
         aria-modal="true"
         aria-label="Navigation menu"
+        aria-hidden={!menuOpen}
         className={`fixed inset-0 z-50 bg-black/80 transition-all ${menuOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
         onClick={closeMenu}
       >
