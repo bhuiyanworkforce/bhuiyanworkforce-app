@@ -10,6 +10,7 @@ import {
 import { useState, useEffect, useRef } from 'react';
 import NotificationBell from '../components/NotificationBell';
 import GlobalSearch from '../components/GlobalSearch';
+import { APP_BOOKS_LABEL } from '../lib/constants';
 
 const NAV = [
   { to: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, group: 'core' },
@@ -142,7 +143,7 @@ export default function AppLayout() {
       {/* Header */}
       <header className="sticky top-0 z-50 bg-[#08050F] border-b border-slate-800 px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <div className="text-white font-bold text-xl">Bhuiyan Books</div>
+          <div className="text-white font-bold text-xl">{APP_BOOKS_LABEL}</div>
         </div>
 
         <div className="flex items-center gap-3">
@@ -181,7 +182,7 @@ export default function AppLayout() {
           role="presentation"
         >
           <div className="flex justify-between items-center mb-8">
-            <div className="text-white font-bold text-2xl">Bhuiyan Books</div>
+            <div className="text-white font-bold text-2xl">{APP_BOOKS_LABEL}</div>
             <button onClick={closeMenu} aria-label="Close menu">
               <X size={24} className="text-slate-400" />
             </button>
