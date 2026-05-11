@@ -2,7 +2,8 @@
 //   1. Auth check via INTERNAL_SECRET — unauthenticated callers are rejected.
 //   2. escHtml() applied to every user-supplied value before interpolation
 //      into the HTML email body, preventing XSS in email clients.
-//   3. NOTIFY_EMAIL read from env var instead of being hardcoded in source.
+//   3. NOTIFY_EMAIL read from env var only — hardcoded fallback address removed
+//      (previously leaked a real email address into source control).
 //   4. Unknown notification types now return 400 instead of sending a blank email.
 //   5. Migrated from deno.land/std@0.168.0 import to native Deno.serve(),
 //      which is built into the Supabase edge runtime — no external URL needed.
@@ -30,9 +31,17 @@ Deno.serve(async (req) => {
   }
 
   const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY') ?? ''
-  // NOTIFY_EMAIL replaces the hardcoded address — set it in the Supabase
-  // dashboard under Functions → send-notification → Secrets.
-  const NOTIFY_EMAIL  = Deno.env.get('NOTIFY_EMAIL') ?? 'rezaul@bhuiyanworkforce.com'
+  // FIX: NOTIFY_EMAIL must be set as a secret in the Supabase dashboard under
+  // Functions → send-notification → Secrets. No hardcoded fallback — if the
+  // secret is missing the function returns 500 instead of sending to a
+  // real person's address committed to source control.
+  const NOTIFY_EMAIL = Deno.env.get('NOTIFY_EMAIL')
+  if (!NOTIFY_EMAIL) {
+    return new Response(
+      JSON.stringify({ error: 'NOTIFY_EMAIL secret is not configured' }),
+      { status: 500, headers },
+    )
+  }
 
   let body: { type: string; data: Record<string, unknown> }
   try {
