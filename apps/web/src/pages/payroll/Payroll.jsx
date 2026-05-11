@@ -1,5 +1,5 @@
 import PropTypes from 'prop-types'
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { supabase } from "../../lib/supabase";
 import { Plus, X } from "lucide-react";
 import { calcAgentNet, calcEmpNet } from "../../lib/utils";
@@ -8,6 +8,8 @@ import { Spinner } from '../../components/Skeleton'
 // ─── AGENT PAYROLL ────────────────────────────────────────────────────────────
 // calcAgentNet and calcEmpNet are now in src/lib/utils.js — single source of
 // truth shared between the DB insert and the live preview.
+
+const PAGE_SIZE = 20
 
 function AddAgentPayrollModal({ onClose, onSaved }) {
   const [agents, setAgents] = useState([]);
@@ -482,64 +484,101 @@ EmployeePayrollDetail.propTypes = {
   onUpdated: PropTypes.func.isRequired,
 };
 
+// ─── MAIN ─────────────────────────────────────────────────────────────────────
+
 export default function Payroll() {
   const [tab, setTab] = useState("agent");
 
-  const [agentPayrolls, setAgentPayrolls] = useState([]);
-  const [agentLoading, setAgentLoading] = useState(true);
-  const [showAddAgent, setShowAddAgent] = useState(false);
-  const [selectedAgent, setSelectedAgent] = useState(null);
-  const [agentFilter, setAgentFilter] = useState("all");
+  // Agent payroll state
+  const [agentPayrolls, setAgentPayrolls]     = useState([]);
+  const [agentLoading, setAgentLoading]       = useState(true);
+  const [agentLoadingMore, setAgentLoadingMore] = useState(false);
+  const [agentOffset, setAgentOffset]         = useState(0);
+  const [agentTotal, setAgentTotal]           = useState(0);
+  const [agentHasMore, setAgentHasMore]       = useState(false);
+  const [agentFilter, setAgentFilter]         = useState("all");
+  const [showAddAgent, setShowAddAgent]       = useState(false);
+  const [selectedAgent, setSelectedAgent]     = useState(null);
 
-  const [empPayrolls, setEmpPayrolls] = useState([]);
-  const [empLoading, setEmpLoading] = useState(true);
-  const [showAddEmp, setShowAddEmp] = useState(false);
-  const [selectedEmp, setSelectedEmp] = useState(null);
-  const [empFilter, setEmpFilter] = useState("all");
+  // Employee payroll state
+  const [empPayrolls, setEmpPayrolls]         = useState([]);
+  const [empLoading, setEmpLoading]           = useState(true);
+  const [empLoadingMore, setEmpLoadingMore]   = useState(false);
+  const [empOffset, setEmpOffset]             = useState(0);
+  const [empTotal, setEmpTotal]               = useState(0);
+  const [empHasMore, setEmpHasMore]           = useState(false);
+  const [empFilter, setEmpFilter]             = useState("all");
+  const [showAddEmp, setShowAddEmp]           = useState(false);
+  const [selectedEmp, setSelectedEmp]         = useState(null);
 
-  useEffect(() => { fetchAgentPayrolls(); }, []);
-  useEffect(() => { if (tab === "employee" && empPayrolls.length === 0) fetchEmpPayrolls(); }, [tab]);
-
-  async function fetchAgentPayrolls() {
-    setAgentLoading(true);
+  const fetchAgentPayrolls = useCallback(async (newOffset = 0, statusFilter = agentFilter) => {
+    if (newOffset === 0) setAgentLoading(true); else setAgentLoadingMore(true);
     try {
-      const { data, error } = await supabase.from("payroll")
-        .select("*, agents(full_name)")
-        .order("period_start", { ascending: false });
+      let q = supabase
+        .from("payroll")
+        .select("*, agents(full_name)", { count: 'exact' })
+        .order("period_start", { ascending: false })
+        .range(newOffset, newOffset + PAGE_SIZE - 1);
+      if (statusFilter !== "all") q = q.eq("status", statusFilter);
+      const { data, error, count } = await q;
       if (error) throw error;
-      setAgentPayrolls(data || []);
+      const rows = data || [];
+      setAgentPayrolls(prev => newOffset === 0 ? rows : [...prev, ...rows]);
+      setAgentTotal(count || 0);
+      setAgentOffset(newOffset);
+      setAgentHasMore(newOffset + PAGE_SIZE < (count || 0));
     } catch (err) {
       console.error('[Payroll] fetchAgentPayrolls failed:', err);
-      setAgentPayrolls([]);
+      if (newOffset === 0) setAgentPayrolls([]);
     } finally {
       setAgentLoading(false);
+      setAgentLoadingMore(false);
     }
-  }
+  }, [agentFilter]);
 
-  async function fetchEmpPayrolls() {
-    setEmpLoading(true);
+  const fetchEmpPayrolls = useCallback(async (newOffset = 0, statusFilter = empFilter) => {
+    if (newOffset === 0) setEmpLoading(true); else setEmpLoadingMore(true);
     try {
-      const { data, error } = await supabase.from("employee_payroll")
-        .select("*, employees(name, role)")
+      let q = supabase
+        .from("employee_payroll")
+        .select("*, employees(name, role)", { count: 'exact' })
         .order("year", { ascending: false })
-        .order("month", { ascending: false });
+        .order("month", { ascending: false })
+        .range(newOffset, newOffset + PAGE_SIZE - 1);
+      if (statusFilter !== "all") q = q.eq("status", statusFilter);
+      const { data, error, count } = await q;
       if (error) throw error;
-      setEmpPayrolls(data || []);
+      const rows = data || [];
+      setEmpPayrolls(prev => newOffset === 0 ? rows : [...prev, ...rows]);
+      setEmpTotal(count || 0);
+      setEmpOffset(newOffset);
+      setEmpHasMore(newOffset + PAGE_SIZE < (count || 0));
     } catch (err) {
       console.error('[Payroll] fetchEmpPayrolls failed:', err);
-      setEmpPayrolls([]);
+      if (newOffset === 0) setEmpPayrolls([]);
     } finally {
       setEmpLoading(false);
+      setEmpLoadingMore(false);
     }
+  }, [empFilter]);
+
+  useEffect(() => { fetchAgentPayrolls(0); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (tab === "employee" && empPayrolls.length === 0) fetchEmpPayrolls(0); }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function handleAgentFilter(f) {
+    setAgentFilter(f);
+    fetchAgentPayrolls(0, f);
+  }
+  function handleEmpFilter(f) {
+    setEmpFilter(f);
+    fetchEmpPayrolls(0, f);
   }
 
-  const filteredAgent = agentFilter === "all" ? agentPayrolls : agentPayrolls.filter(p => p.status === agentFilter);
+  // Summary stats from loaded rows (approximate when paginated; accurate when filter = all + small dataset)
   const agentPending = agentPayrolls.filter(p => p.status === "pending").reduce((s, p) => s + (Number(p.net_amount || p.net_salary) || 0), 0);
-  const agentPaid = agentPayrolls.filter(p => p.status === "paid").reduce((s, p) => s + (Number(p.net_amount || p.net_salary) || 0), 0);
-
-  const filteredEmp = empFilter === "all" ? empPayrolls : empPayrolls.filter(p => p.status === empFilter);
-  const empPending = empPayrolls.filter(p => p.status === "pending").reduce((s, p) => s + (Number(p.net_salary) || 0), 0);
-  const empPaid = empPayrolls.filter(p => p.status === "paid").reduce((s, p) => s + (Number(p.net_salary) || 0), 0);
+  const agentPaid    = agentPayrolls.filter(p => p.status === "paid").reduce((s, p) => s + (Number(p.net_amount || p.net_salary) || 0), 0);
+  const empPending   = empPayrolls.filter(p => p.status === "pending").reduce((s, p) => s + (Number(p.net_salary) || 0), 0);
+  const empPaid      = empPayrolls.filter(p => p.status === "paid").reduce((s, p) => s + (Number(p.net_salary) || 0), 0);
 
   return (
     <div className="flex flex-col gap-4">
@@ -547,7 +586,7 @@ export default function Payroll() {
         <div>
           <h1 className="text-2xl font-extrabold text-slate-100">Payroll</h1>
           <p className="text-slate-500 text-sm">
-            {tab === "agent" ? `${agentPayrolls.length} agent records` : `${empPayrolls.length} employee records`}
+            {tab === "agent" ? `${agentTotal} agent records` : `${empTotal} employee records`}
           </p>
         </div>
         <button
@@ -580,43 +619,51 @@ export default function Payroll() {
           </div>
           <div className="flex gap-2">
             {["all","pending","paid"].map(s => (
-              <button key={s} onClick={() => setAgentFilter(s)}
+              <button key={s} onClick={() => handleAgentFilter(s)}
                 className={`px-4 py-1.5 rounded-full text-xs font-bold capitalize ${agentFilter === s ? "bg-indigo-600 text-white" : "bg-slate-800 text-slate-400"}`}>
                 {s}
               </button>
             ))}
           </div>
-          {agentLoading ? (
-            <Spinner />
-          ) : (
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
-              {filteredAgent.length === 0 ? (
-                <p className="text-center text-slate-600 py-12 text-sm">No payroll records</p>
-              ) : (
-                <ul>{filteredAgent.map((p, i) => (
-                  <li key={p.id}>
-                  <button type="button" onClick={() => setSelectedAgent(p)}
-                    className={`w-full text-left px-4 py-4 cursor-pointer active:bg-slate-800 transition-colors ${i < filteredAgent.length-1 ? "border-b border-slate-800" : ""}`}>
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <p className="text-slate-200 text-sm font-semibold">{p.agents?.full_name || "—"}</p>
-                        <p className="text-slate-500 text-xs">
-                          {p.period_start ? new Date(p.period_start).toLocaleDateString() : "—"}
-                          {p.period_end ? " → " + new Date(p.period_end).toLocaleDateString() : ""}
-                        </p>
-                      </div>
-                      <div className="flex flex-col items-end gap-1">
-                        <p className="text-white font-bold text-sm">৳{(Number(p.net_amount || p.net_salary) || 0).toLocaleString()}</p>
-                        <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${p.status === "paid" ? "bg-emerald-500/15 text-emerald-400" : "bg-amber-500/15 text-amber-400"}`}>
-                          {p.status}
-                        </span>
-                      </div>
-                    </div>
-                  </button>
-                  </li>
-                ))}</ul>
+          {agentLoading ? <Spinner /> : (
+            <>
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
+                {agentPayrolls.length === 0 ? (
+                  <p className="text-center text-slate-600 py-12 text-sm">No payroll records</p>
+                ) : (
+                  <ul>{agentPayrolls.map((p, i) => (
+                    <li key={p.id}>
+                      <button type="button" onClick={() => setSelectedAgent(p)}
+                        className={`w-full text-left px-4 py-4 cursor-pointer active:bg-slate-800 transition-colors ${i < agentPayrolls.length-1 ? "border-b border-slate-800" : ""}`}>
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <p className="text-slate-200 text-sm font-semibold">{p.agents?.full_name || "—"}</p>
+                            <p className="text-slate-500 text-xs">
+                              {p.period_start ? new Date(p.period_start).toLocaleDateString() : "—"}
+                              {p.period_end ? " → " + new Date(p.period_end).toLocaleDateString() : ""}
+                            </p>
+                          </div>
+                          <div className="flex flex-col items-end gap-1">
+                            <p className="text-white font-bold text-sm">৳{(Number(p.net_amount || p.net_salary) || 0).toLocaleString()}</p>
+                            <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${p.status === "paid" ? "bg-emerald-500/15 text-emerald-400" : "bg-amber-500/15 text-amber-400"}`}>
+                              {p.status}
+                            </span>
+                          </div>
+                        </div>
+                      </button>
+                    </li>
+                  ))}</ul>
+                )}
+              </div>
+              {agentHasMore && (
+                <button
+                  onClick={() => fetchAgentPayrolls(agentOffset + PAGE_SIZE)}
+                  disabled={agentLoadingMore}
+                  className="w-full py-3 rounded-xl bg-slate-800 text-slate-300 text-sm font-bold disabled:opacity-50">
+                  {agentLoadingMore ? 'Loading…' : `Load More (${agentTotal - agentPayrolls.length} remaining)`}
+                </button>
               )}
-            </div>
+            </>
           )}
         </>
       )}
@@ -635,48 +682,56 @@ export default function Payroll() {
           </div>
           <div className="flex gap-2">
             {["all","pending","paid"].map(s => (
-              <button key={s} onClick={() => setEmpFilter(s)}
+              <button key={s} onClick={() => handleEmpFilter(s)}
                 className={`px-4 py-1.5 rounded-full text-xs font-bold capitalize ${empFilter === s ? "bg-indigo-600 text-white" : "bg-slate-800 text-slate-400"}`}>
                 {s}
               </button>
             ))}
           </div>
-          {empLoading ? (
-            <Spinner />
-          ) : (
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
-              {filteredEmp.length === 0 ? (
-                <p className="text-center text-slate-600 py-12 text-sm">No employee payroll records</p>
-              ) : (
-                <ul>{filteredEmp.map((p, i) => (
-                  <li key={p.id}>
-                  <button type="button" onClick={() => setSelectedEmp(p)}
-                    className={`w-full text-left px-4 py-4 cursor-pointer active:bg-slate-800 transition-colors ${i < filteredEmp.length-1 ? "border-b border-slate-800" : ""}`}>
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <p className="text-slate-200 text-sm font-semibold">{p.employees?.name || "—"}</p>
-                        <p className="text-slate-500 text-xs">{p.employees?.role || ""} · {MONTHS[(p.month||1)-1]} {p.year}</p>
-                      </div>
-                      <div className="flex flex-col items-end gap-1">
-                        <p className="text-white font-bold text-sm">৳{(Number(p.net_salary) || 0).toLocaleString()}</p>
-                        <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${p.status === "paid" ? "bg-emerald-500/15 text-emerald-400" : "bg-amber-500/15 text-amber-400"}`}>
-                          {p.status}
-                        </span>
-                      </div>
-                    </div>
-                  </button>
-                  </li>
-                ))}</ul>
+          {empLoading ? <Spinner /> : (
+            <>
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
+                {empPayrolls.length === 0 ? (
+                  <p className="text-center text-slate-600 py-12 text-sm">No employee payroll records</p>
+                ) : (
+                  <ul>{empPayrolls.map((p, i) => (
+                    <li key={p.id}>
+                      <button type="button" onClick={() => setSelectedEmp(p)}
+                        className={`w-full text-left px-4 py-4 cursor-pointer active:bg-slate-800 transition-colors ${i < empPayrolls.length-1 ? "border-b border-slate-800" : ""}`}>
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <p className="text-slate-200 text-sm font-semibold">{p.employees?.name || "—"}</p>
+                            <p className="text-slate-500 text-xs">{p.employees?.role || ""} · {MONTHS[(p.month||1)-1]} {p.year}</p>
+                          </div>
+                          <div className="flex flex-col items-end gap-1">
+                            <p className="text-white font-bold text-sm">৳{(Number(p.net_salary) || 0).toLocaleString()}</p>
+                            <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${p.status === "paid" ? "bg-emerald-500/15 text-emerald-400" : "bg-amber-500/15 text-amber-400"}`}>
+                              {p.status}
+                            </span>
+                          </div>
+                        </div>
+                      </button>
+                    </li>
+                  ))}</ul>
+                )}
+              </div>
+              {empHasMore && (
+                <button
+                  onClick={() => fetchEmpPayrolls(empOffset + PAGE_SIZE)}
+                  disabled={empLoadingMore}
+                  className="w-full py-3 rounded-xl bg-slate-800 text-slate-300 text-sm font-bold disabled:opacity-50">
+                  {empLoadingMore ? 'Loading…' : `Load More (${empTotal - empPayrolls.length} remaining)`}
+                </button>
               )}
-            </div>
+            </>
           )}
         </>
       )}
 
-      {showAddAgent && <AddAgentPayrollModal onClose={() => setShowAddAgent(false)} onSaved={() => { setShowAddAgent(false); fetchAgentPayrolls(); }}/>}
-      {selectedAgent && <AgentPayrollDetail record={selectedAgent} onClose={() => setSelectedAgent(null)} onUpdated={fetchAgentPayrolls}/>}
-      {showAddEmp && <AddEmployeePayrollModal onClose={() => setShowAddEmp(false)} onSaved={() => { setShowAddEmp(false); fetchEmpPayrolls(); }}/>}
-      {selectedEmp && <EmployeePayrollDetail record={selectedEmp} onClose={() => setSelectedEmp(null)} onUpdated={fetchEmpPayrolls}/>}
+      {showAddAgent && <AddAgentPayrollModal onClose={() => setShowAddAgent(false)} onSaved={() => { setShowAddAgent(false); fetchAgentPayrolls(0); }}/>}
+      {selectedAgent && <AgentPayrollDetail record={selectedAgent} onClose={() => setSelectedAgent(null)} onUpdated={() => fetchAgentPayrolls(0)}/>}
+      {showAddEmp && <AddEmployeePayrollModal onClose={() => setShowAddEmp(false)} onSaved={() => { setShowAddEmp(false); fetchEmpPayrolls(0); }}/>}
+      {selectedEmp && <EmployeePayrollDetail record={selectedEmp} onClose={() => setSelectedEmp(null)} onUpdated={() => fetchEmpPayrolls(0)}/>}
     </div>
   );
 }
