@@ -90,9 +90,22 @@ export default function NotificationBell() {
   // ── init on mount ────────────────────────────────────────────────────────
   useEffect(() => {
     async function init() {
-      // getSession() reads from local storage — no network round-trip needed
-      const { data: { session } } = await supabase.auth.getSession()
-      const user = session?.user
+      // FIX: Read session directly from localStorage instead of calling
+      // supabase.auth.getSession(), which can trigger a network refresh
+      // request and hang on slow connections (same pattern as AuthContext).
+      const key = Object.keys(localStorage).find(
+        k => k.startsWith('sb-') && k.endsWith('-auth-token')
+      )
+      let user = null
+      if (key) {
+        try {
+          const parsed = JSON.parse(localStorage.getItem(key) ?? 'null')
+          const expiresAt = parsed?.expires_at
+          if (!expiresAt || expiresAt > Math.floor(Date.now() / 1000)) {
+            user = parsed?.user ?? null
+          }
+        } catch { /* ignore parse errors — fall through to no-user path */ }
+      }
       if (!user) return
 
       userIdRef.current = user.id
