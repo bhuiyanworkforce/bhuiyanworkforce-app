@@ -47,7 +47,6 @@ const navClass = (isActive) => `
   }
 `;
 
-// Focusable elements we want to include in the focus trap
 const FOCUSABLE = [
   'a[href]',
   'button:not([disabled])',
@@ -64,18 +63,16 @@ export default function AppLayout() {
   const isOwner     = profile?.role === 'owner'
   const isAgent     = profile?.role === 'agent'
   const isAssistant = profile?.role === 'assistant'
-  const isRestricted = isAgent || isAssistant // neither sees finance/analytics menus
+  const isRestricted = isAgent || isAssistant
 
-  // FIX: ref for the slide-out panel so we can trap focus inside it.
   const menuPanelRef = useRef(null);
 
-  // Owner sees everything including Users. Manager sees core (minus Users) + finance + analytics.
-  // Agent and assistant see their restricted subsets only.
+  // Agent: Dashboard, Passports, Candidates only — no Accounts, no Finance
   const ownerCoreNav    = NAV.filter(n => n.group === 'core')
   const managerCoreNav  = NAV.filter(n => n.group === 'core' && n.to !== 'users')
-  const agentNav        = NAV.filter(n => ['dashboard', 'candidates', 'passports', 'accounts'].includes(n.to))
+  const agentNav        = NAV.filter(n => ['dashboard', 'candidates', 'passports'].includes(n.to))
   const assistantNav    = NAV.filter(n => ['dashboard', 'candidates', 'passports', 'visa'].includes(n.to))
-  const agentBottom     = BOTTOM_NAV.filter(n => ['dashboard', 'candidates', 'passports', 'accounts'].includes(n.to))
+  const agentBottom     = BOTTOM_NAV.filter(n => ['dashboard', 'passports', 'candidates'].includes(n.to))
   const assistantBottom = BOTTOM_NAV.filter(n => ['dashboard', 'candidates', 'passports', 'visa'].includes(n.to))
 
   const handleSignOut = async () => {
@@ -85,15 +82,6 @@ export default function AppLayout() {
 
   const closeMenu = () => setMenuOpen(false);
 
-  // ── Focus trap + Escape key ────────────────────────────────────────────────
-  // FIX: Without a focus trap, pressing Tab while the mobile menu is open moves
-  // focus into the content behind the overlay — confusing for keyboard and
-  // screen-reader users, and a WCAG 2.1 2.1.2 failure.
-  //
-  // When the menu opens:
-  //   1. Focus is moved to the first focusable element inside the panel.
-  //   2. Tab / Shift-Tab are intercepted to cycle within the panel only.
-  //   3. Escape closes the menu and returns focus to the hamburger button.
   const hamburgerRef = useRef(null);
 
   useEffect(() => {
@@ -102,27 +90,23 @@ export default function AppLayout() {
     const panel = menuPanelRef.current;
     if (!panel) return;
 
-    // Collect all focusable elements in the panel at the time it opens.
     const getFocusable = () =>
       Array.from(panel.querySelectorAll(FOCUSABLE)).filter(
         el => !el.closest('[aria-hidden="true"]') && el.offsetParent !== null
       );
 
-    // Move initial focus into the panel.
     const focusable = getFocusable();
     focusable[0]?.focus();
 
     function handleKeyDown(e) {
       if (e.key === 'Escape') {
         closeMenu();
-        // Return focus to the button that opened the menu.
         hamburgerRef.current?.focus();
         return;
       }
 
       if (e.key !== 'Tab') return;
 
-      // Re-query on every Tab press so dynamically-added elements are included.
       const els = getFocusable();
       if (els.length === 0) return;
 
@@ -130,13 +114,11 @@ export default function AppLayout() {
       const last  = els[els.length - 1];
 
       if (e.shiftKey) {
-        // Shift-Tab: if we're on the first element, wrap to the last.
         if (document.activeElement === first) {
           e.preventDefault();
           last.focus();
         }
       } else {
-        // Tab: if we're on the last element, wrap to the first.
         if (document.activeElement === last) {
           e.preventDefault();
           first.focus();
@@ -148,7 +130,6 @@ export default function AppLayout() {
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [menuOpen]);
 
-  // Resolve which core nav list to show based on role
   const coreNav = isAgent ? agentNav : isAssistant ? assistantNav : isOwner ? ownerCoreNav : managerCoreNav
 
   return (
@@ -184,9 +165,6 @@ export default function AppLayout() {
         className={`fixed inset-0 z-50 bg-black/80 transition-all ${menuOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
         onClick={closeMenu}
       >
-        {/* Slide-out panel — stopPropagation prevents the overlay click from
-            firing when clicking inside the panel itself. The focus trap is
-            attached to this element via menuPanelRef. */}
         <div
           ref={menuPanelRef}
           className="fixed inset-y-0 right-0 w-64 bg-[#08050F] border-l border-slate-800 p-5 overflow-y-auto"
