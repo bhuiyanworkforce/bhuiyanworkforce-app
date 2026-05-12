@@ -1,37 +1,18 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { useLocation } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
+import { useAuth } from '../../context/AuthContext'
 import { Plus, Search, ChevronRight, CheckCircle, Circle, X, SlidersHorizontal, AlertTriangle, RefreshCw } from 'lucide-react'
 import { PASSPORT_STATUS_COLOR as STATUS_COLOR, PASSPORT_WORKFLOW_STAGES as STATUSES_LIST } from '../../lib/constants'
 import AddPassportModal from './AddPassportModal'
 import PassportDetail from './PassportDetail'
 import { ListSkeleton } from '../../components/Skeleton'
 
-// STATUS_COLOR and stage list now imported from ../../lib/constants
 const STATUSES = STATUSES_LIST.map(s => s.key)
 const PAGE_SIZE = 20
-
-// FIX: Candidate name search was broken because PostgREST does not support
-// filtering on a related (joined) table column via a plain .or() string.
-// The previous query:
-//   .or(`passport_no.ilike.%${term}%,candidates.full_name.ilike.%${term}%`)
-// silently returned no results when searching by name.
-//
-// Fix: Split into two separate queries — one for passport_no, one for
-// candidate full_name — then merge and deduplicate by id client-side.
-//
-// FIX 2: When a search term is active, the previous code still applied
-// DB-level .limit(PAGE_SIZE) to each branch, capping the merged pool at
-// 2×PAGE_SIZE items. Paginating over that small pool with client-side slice
-// meant page 2 was almost always empty even when more results exist in the DB.
-//
-// Fix: In search mode we fetch up to SEARCH_CAP results per branch (enough
-// for practical use) and do pagination purely client-side over the merged set.
-// When no search term is present we use proper server-side RANGE pagination.
-const SEARCH_CAP = 200 // max results per branch when a search term is active
+const SEARCH_CAP = 200
 
 async function fetchPassportsBySearch(supabaseClient, { searchTerm, status, from, to, newOffset }) {
-  // Base query builder (no search filter — applied per-branch below)
   function base() {
     let q = supabaseClient
       .from('passports')
@@ -47,34 +28,30 @@ async function fetchPassportsBySearch(supabaseClient, { searchTerm, status, from
   const term = searchTerm?.trim()
 
   if (!term) {
-    // No search term — proper server-side paginated query
     const { data } = await base().range(newOffset, newOffset + PAGE_SIZE - 1)
     return { rows: data || [], isSearchMode: false }
   }
 
-  // FIX: Use SEARCH_CAP instead of PAGE_SIZE so the merged pool is large
-  // enough to paginate into page 2, 3, etc. without hitting an empty wall.
   const [byPassportNo, byCandidateName] = await Promise.all([
     base().ilike('passport_no', `%${term}%`).limit(SEARCH_CAP),
     base().ilike('candidates.full_name', `%${term}%`).limit(SEARCH_CAP),
   ])
 
-  // Merge and deduplicate by passport id
   const seen   = new Set()
   const merged = []
   for (const p of [...(byPassportNo.data || []), ...(byCandidateName.data || [])]) {
-    if (!seen.has(p.id)) {
-      seen.add(p.id)
-      merged.push(p)
-    }
+    if (!seen.has(p.id)) { seen.add(p.id); merged.push(p) }
   }
 
-  // Client-side pagination over the full merged set
   return { rows: merged.slice(newOffset, newOffset + PAGE_SIZE), isSearchMode: true, total: merged.length }
 }
 
 export default function Passports() {
   const location = useLocation()
+  const { profile } = useAuth()
+  const isAgent     = profile?.role === 'agent'
+  const canAdd      = !isAgent // assistant + manager + owner can add
+
   const [passports, setPassports]       = useState([])
   const [loading, setLoading]           = useState(true)
   const [loadingMore, setLoadingMore]   = useState(false)
@@ -118,11 +95,8 @@ export default function Passports() {
       if (newOffset === 0) setPassports(rows)
       else setPassports(prev => [...prev, ...rows])
 
-      if (isSearchMode) {
-        setHasMore(newOffset + PAGE_SIZE < total)
-      } else {
-        setHasMore(rows.length === PAGE_SIZE)
-      }
+      if (isSearchMode) setHasMore(newOffset + PAGE_SIZE < total)
+      else setHasMore(rows.length === PAGE_SIZE)
 
       setOffset(newOffset)
     } catch (err) {
@@ -150,7 +124,9 @@ export default function Passports() {
     )
   }
 
+  // Bulk select only for non-agents
   function startLongPress(p) {
+    if (isAgent) return
     longPressTimer.current = setTimeout(() => {
       setBulkMode(true)
       setBulkSelected([p.id])
@@ -187,20 +163,12 @@ export default function Passports() {
     return new Date(expiry) < months3
   }
 
-  const statusFilterCount = statusFilter === 'all' ? 0 : 1
-  const activeFilters = statusFilterCount + (dateFrom ? 1 : 0) + (dateTo ? 1 : 0)
+  const activeFilters = (statusFilter === 'all' ? 0 : 1) + (dateFrom ? 1 : 0) + (dateTo ? 1 : 0)
 
   function getBulkButtonLabel() {
     if (bulkUpdating) return 'Updating...'
     const suffix = bulkSelected.length > 1 ? 's' : ''
     return `Update ${bulkSelected.length} Passport${suffix}`
-  }
-
-  function renderBulkIcon(p) {
-    if (bulkSelected.includes(p.id)) {
-      return <CheckCircle size={20} className="text-indigo-400 flex-none" />
-    }
-    return <Circle size={20} className="text-slate-600 flex-none" />
   }
 
   function handlePassportClick(p) {
@@ -218,12 +186,12 @@ export default function Passports() {
           </div>
           {bulkMode ? (
             <button onClick={exitBulkMode} className="flex items-center gap-1 text-slate-400 text-sm font-bold px-3 py-2 rounded-xl bg-slate-800"><X size={16}/> Cancel</button>
-          ) : (
+          ) : canAdd ? (
             <button onClick={() => setShowAdd(true)} className="flex items-center gap-2 bg-gradient-to-r from-indigo-500 to-violet-600 text-white px-4 py-2.5 rounded-xl text-sm font-bold shadow-lg"><Plus size={16}/> Add</button>
-          )}
+          ) : null}
         </div>
 
-        {bulkMode && (
+        {bulkMode && !isAgent && (
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col gap-3">
             <p className="text-slate-400 text-sm">{bulkSelected.length} selected</p>
             <select
@@ -272,12 +240,7 @@ export default function Passports() {
             <div className="flex items-center justify-between">
               <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Filters</p>
               {activeFilters > 0 && (
-                <button
-                  onClick={() => { setStatusFilter('all'); setDateFrom(''); setDateTo('') }}
-                  className="text-xs text-red-400 font-semibold"
-                >
-                  Clear all
-                </button>
+                <button onClick={() => { setStatusFilter('all'); setDateFrom(''); setDateTo('') }} className="text-xs text-red-400 font-semibold">Clear all</button>
               )}
             </div>
             <div>
@@ -285,11 +248,7 @@ export default function Passports() {
               <div className="flex flex-wrap gap-2">
                 <button onClick={() => setStatusFilter('all')} className={"px-3 py-1 rounded-full text-xs font-bold " + (statusFilter === 'all' ? 'bg-indigo-500 text-white' : 'bg-slate-800 text-slate-400')}>All</button>
                 {STATUSES.map(s => (
-                  <button
-                    key={s}
-                    onClick={() => setStatusFilter(s)}
-                    className={"px-3 py-1 rounded-full text-xs font-bold capitalize " + (statusFilter === s ? 'bg-indigo-500 text-white' : 'bg-slate-800 text-slate-400')}
-                  >
+                  <button key={s} onClick={() => setStatusFilter(s)} className={"px-3 py-1 rounded-full text-xs font-bold capitalize " + (statusFilter === s ? 'bg-indigo-500 text-white' : 'bg-slate-800 text-slate-400')}>
                     {s.replaceAll('_', ' ')}
                   </button>
                 ))}
@@ -308,7 +267,7 @@ export default function Passports() {
           </div>
         )}
 
-        {!bulkMode && <p className="text-slate-600 text-xs text-center">Long press a passport to select multiple</p>}
+        {!bulkMode && !isAgent && <p className="text-slate-600 text-xs text-center">Long press a passport to select multiple</p>}
 
         {loading ? (
           <ListSkeleton rows={7} hasSearch={false} hasTabs={true} />
@@ -317,7 +276,7 @@ export default function Passports() {
             <AlertTriangle size={24} className="text-red-400" />
             <p className="text-slate-300 text-sm font-semibold">Failed to load passports</p>
             <p className="text-slate-500 text-xs">{fetchError}</p>
-            <button onClick={() => fetchPassports(0)}
+            <button onClick={() => fetchPassports(search, statusFilter, dateFrom, dateTo, 0)}
               className="flex items-center gap-2 bg-slate-800 text-slate-200 font-bold px-4 py-2 rounded-xl text-sm">
               <RefreshCw size={14} /> Retry
             </button>
@@ -331,10 +290,7 @@ export default function Passports() {
             ) : (
               <ul>
                 {passports.map((p, i) => (
-                  <li
-                    key={p.id}
-                    className={"flex items-center " + (i < passports.length - 1 ? 'border-b border-slate-800' : '')}
-                  >
+                  <li key={p.id} className={"flex items-center " + (i < passports.length - 1 ? 'border-b border-slate-800' : '')}>
                     <button
                       type="button"
                       onTouchStart={() => startLongPress(p)}
@@ -345,7 +301,9 @@ export default function Passports() {
                       className={"w-full flex items-center gap-3 px-4 py-4 text-left cursor-pointer active:bg-slate-800 transition-colors " + (bulkSelected.includes(p.id) ? 'bg-indigo-500/10' : '')}
                     >
                       {bulkMode ? (
-                        renderBulkIcon(p)
+                        bulkSelected.includes(p.id)
+                          ? <CheckCircle size={20} className="text-indigo-400 flex-none" />
+                          : <Circle size={20} className="text-slate-600 flex-none" />
                       ) : (
                         <div className="w-10 h-10 rounded-full bg-indigo-500/15 flex items-center justify-center text-indigo-400 font-bold text-sm flex-none">
                           {p.candidates?.full_name?.[0]?.toUpperCase()}
@@ -368,11 +326,7 @@ export default function Passports() {
               </ul>
             )}
             {hasMore && (
-              <button
-                onClick={loadMore}
-                disabled={loadingMore}
-                className="w-full py-3 text-indigo-400 text-sm font-bold border-t border-slate-800 disabled:opacity-50"
-              >
+              <button onClick={loadMore} disabled={loadingMore} className="w-full py-3 text-indigo-400 text-sm font-bold border-t border-slate-800 disabled:opacity-50">
                 {loadingMore ? 'Loading...' : 'Load More'}
               </button>
             )}
@@ -380,13 +334,15 @@ export default function Passports() {
         )}
       </div>
 
-      <AddPassportModal
-        open={showAdd}
-        onClose={() => setShowAdd(false)}
-        onSaved={() => { setShowAdd(false); fetchPassports(search, statusFilter, dateFrom, dateTo, 0) }}
-      />
+      {canAdd && (
+        <AddPassportModal
+          open={showAdd}
+          onClose={() => setShowAdd(false)}
+          onSaved={() => { setShowAdd(false); fetchPassports(search, statusFilter, dateFrom, dateTo, 0) }}
+        />
+      )}
       {selected && !bulkMode && (
-        <PassportDetail passport={selected} onClose={() => setSelected(null)} onUpdated={handleUpdated}/>
+        <PassportDetail passport={selected} viewOnly={isAgent} onClose={() => setSelected(null)} onUpdated={handleUpdated}/>
       )}
     </>
   )
