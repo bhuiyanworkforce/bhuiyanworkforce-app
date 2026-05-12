@@ -45,9 +45,9 @@ export default defineConfig({
         runtimeCaching: [],
       },
       manifest: {
-        name: 'Bhuiyan Workforce',
-        short_name: 'Bhuiyan',
-        description: 'Bhuiyan Workforce Management',
+        name: 'Bhuiyan Books',
+        short_name: 'Bhuiyan Books',
+        description: 'Bhuiyan Workforce Ltd.',
         theme_color: '#050D1A',
         background_color: '#050D1A',
         display: 'standalone',
