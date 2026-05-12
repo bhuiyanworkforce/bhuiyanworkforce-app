@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../../lib/supabase'
-import { Plus, X, AlertCircle, RefreshCw, Shield, Mail, Users } from 'lucide-react'
+import { Plus, X, AlertCircle, RefreshCw, Shield, Mail, Users, Trash2 } from 'lucide-react'
 import { ListSkeleton } from '../../components/Skeleton'
 
 const APP_ROLES = ['manager', 'agent', 'assistant']
@@ -14,7 +14,6 @@ const ROLE_STYLES = {
 
 const API_BASE = import.meta.env.VITE_API_URL ?? 'https://api.bhuiyanworkforce.com'
 
-// Helper: authenticated fetch to our Cloudflare Worker API
 async function apiFetch(path, options = {}) {
   const { data: { session } } = await supabase.auth.getSession()
   const token = session?.access_token
@@ -34,22 +33,25 @@ async function apiFetch(path, options = {}) {
   return json
 }
 
-// ── Invite Modal ──────────────────────────────────────────────────────────────
-function InviteUserModal({ onClose, onSaved }) {
-  const [form, setForm]     = useState({ email: '', role: 'manager', full_name: '' })
+// ── Create User Modal ─────────────────────────────────────────────────────────
+function CreateUserModal({ onClose, onSaved }) {
+  const [form, setForm]     = useState({ email: '', password: '', full_name: '', role: 'manager' })
   const [saving, setSaving] = useState(false)
   const [error, setError]   = useState('')
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }))
 
-  async function handleInvite() {
-    if (!form.email.trim()) { setError('Email is required'); return }
+  async function handleCreate() {
+    if (!form.email.trim())    { setError('Email is required'); return }
+    if (!form.password.trim()) { setError('Password is required'); return }
+    if (form.password.length < 6) { setError('Password must be at least 6 characters'); return }
     setSaving(true)
     setError('')
     try {
-      await apiFetch('/users/invite', {
+      await apiFetch('/users', {
         method: 'POST',
         body: JSON.stringify({
           email:     form.email.trim(),
+          password:  form.password,
           role:      form.role,
           full_name: form.full_name.trim() || null,
         }),
@@ -64,9 +66,9 @@ function InviteUserModal({ onClose, onSaved }) {
 
   return (
     <div className="fixed inset-0 z-50 bg-black/70 flex items-end justify-center">
-      <div className="bg-[#0D1626] border border-slate-800 rounded-t-2xl w-full max-h-[85vh] overflow-y-auto">
+      <div className="bg-[#0D1626] border border-slate-800 rounded-t-2xl w-full max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800 sticky top-0 bg-[#0D1626]">
-          <h2 className="text-slate-100 font-bold text-lg">Invite User</h2>
+          <h2 className="text-slate-100 font-bold text-lg">Add User</h2>
           <button type="button" onClick={onClose}><X size={20} className="text-slate-400"/></button>
         </div>
         <div className="p-5 pb-24 flex flex-col gap-4">
@@ -86,6 +88,18 @@ function InviteUserModal({ onClose, onSaved }) {
               placeholder="user@example.com"
               className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500"
             />
+          </label>
+
+          <label className="flex flex-col gap-1">
+            <span className="text-xs text-slate-500 font-semibold">Password *</span>
+            <input
+              type="password"
+              value={form.password}
+              onChange={e => set('password', e.target.value)}
+              placeholder="Min. 6 characters"
+              className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500"
+            />
+            <span className="text-xs text-slate-600">The user can change this after logging in.</span>
           </label>
 
           <label className="flex flex-col gap-1">
@@ -112,17 +126,13 @@ function InviteUserModal({ onClose, onSaved }) {
             </select>
           </label>
 
-          <p className="text-xs text-slate-500">
-            An invitation email will be sent. The user sets their own password on first login.
-          </p>
-
           <button
             type="button"
-            onClick={handleInvite}
+            onClick={handleCreate}
             disabled={saving}
             className="w-full bg-gradient-to-r from-indigo-500 to-violet-600 text-white py-3 rounded-xl font-bold text-sm mt-1 disabled:opacity-50"
           >
-            {saving ? 'Sending Invite…' : 'Send Invite'}
+            {saving ? 'Creating…' : 'Create User'}
           </button>
         </div>
       </div>
@@ -194,13 +204,71 @@ function ChangeRoleModal({ user, onClose, onSaved }) {
   )
 }
 
+// ── Delete Confirm Modal ──────────────────────────────────────────────────────
+function DeleteConfirmModal({ user, onClose, onDeleted }) {
+  const [deleting, setDeleting] = useState(false)
+  const [error, setError]       = useState('')
+
+  async function handleDelete() {
+    setDeleting(true)
+    setError('')
+    try {
+      await apiFetch(`/users/${user.id}`, { method: 'DELETE' })
+      onDeleted()
+    } catch (err) {
+      setError(err.message)
+      setDeleting(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/70 flex items-end justify-center">
+      <div className="bg-[#0D1626] border border-slate-800 rounded-t-2xl w-full">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800">
+          <h2 className="text-slate-100 font-bold text-lg">Delete User</h2>
+          <button type="button" onClick={onClose}><X size={20} className="text-slate-400"/></button>
+        </div>
+        <div className="p-5 pb-10 flex flex-col gap-4">
+          <p className="text-sm text-slate-300">
+            Are you sure you want to delete <span className="text-white font-semibold">{user.full_name || user.email}</span>? This cannot be undone.
+          </p>
+          {error && (
+            <div className="flex items-center gap-2 text-red-400 text-sm bg-red-500/10 px-4 py-2 rounded-xl">
+              <AlertCircle size={15} className="flex-none" />
+              {error}
+            </div>
+          )}
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 bg-slate-800 text-slate-300 py-3 rounded-xl font-bold text-sm"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleDelete}
+              disabled={deleting}
+              className="flex-1 bg-red-500/20 text-red-400 border border-red-500/30 py-3 rounded-xl font-bold text-sm disabled:opacity-50"
+            >
+              {deleting ? 'Deleting…' : 'Delete'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export default function UsersPage() {
-  const [users, setUsers]           = useState([])
-  const [loading, setLoading]       = useState(true)
-  const [error, setError]           = useState('')
-  const [showInvite, setShowInvite] = useState(false)
-  const [editUser, setEditUser]     = useState(null)
+  const [users, setUsers]             = useState([])
+  const [loading, setLoading]         = useState(true)
+  const [error, setError]             = useState('')
+  const [showCreate, setShowCreate]   = useState(false)
+  const [editUser, setEditUser]       = useState(null)
+  const [deleteUser, setDeleteUser]   = useState(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -218,8 +286,13 @@ export default function UsersPage() {
   useEffect(() => { load() }, [load])
 
   function handleSaved() {
-    setShowInvite(false)
+    setShowCreate(false)
     setEditUser(null)
+    load()
+  }
+
+  function handleDeleted() {
+    setDeleteUser(null)
     load()
   }
 
@@ -247,11 +320,11 @@ export default function UsersPage() {
           </button>
           <button
             type="button"
-            onClick={() => setShowInvite(true)}
+            onClick={() => setShowCreate(true)}
             className="flex items-center gap-1.5 bg-gradient-to-r from-indigo-500 to-violet-600 text-white px-3 py-2 rounded-xl font-bold text-sm"
           >
             <Plus size={15} />
-            Invite
+            Add User
           </button>
         </div>
       </div>
@@ -274,13 +347,16 @@ export default function UsersPage() {
         ) : (
           <div className="flex flex-col gap-2">
             {users.map(user => (
-              <button
+              <div
                 key={user.id}
-                type="button"
-                onClick={() => user.role !== 'owner' && setEditUser(user)}
-                className="w-full bg-slate-900 border border-slate-800 rounded-2xl px-4 py-3.5 flex items-center justify-between text-left active:bg-slate-800 transition-colors"
+                className="w-full bg-slate-900 border border-slate-800 rounded-2xl px-4 py-3.5 flex items-center justify-between"
               >
-                <div className="flex items-center gap-3 min-w-0">
+                {/* Left: avatar + info — tappable to change role */}
+                <button
+                  type="button"
+                  onClick={() => user.role !== 'owner' && setEditUser(user)}
+                  className="flex items-center gap-3 min-w-0 flex-1 text-left"
+                >
                   <div className="w-9 h-9 rounded-full bg-indigo-500/20 flex items-center justify-center flex-none">
                     <span className="text-indigo-400 font-bold text-sm uppercase">
                       {(user.full_name || user.email || '?')[0]}
@@ -295,26 +371,38 @@ export default function UsersPage() {
                       {user.email}
                     </p>
                   </div>
-                </div>
+                </button>
+
+                {/* Right: role badge + delete */}
                 <div className="flex items-center gap-2 flex-none ml-2">
                   <span className={`text-xs font-bold px-2.5 py-1 rounded-full capitalize ${ROLE_STYLES[user.role] || 'bg-slate-700 text-slate-300'}`}>
                     {user.role || 'no role'}
                   </span>
                   {user.role !== 'owner' && (
-                    <span className="text-slate-600 text-xs">›</span>
+                    <button
+                      type="button"
+                      onClick={() => setDeleteUser(user)}
+                      className="p-1.5 rounded-lg text-slate-600 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                      aria-label="Delete user"
+                    >
+                      <Trash2 size={15} />
+                    </button>
                   )}
                 </div>
-              </button>
+              </div>
             ))}
           </div>
         )}
       </div>
 
-      {showInvite && (
-        <InviteUserModal onClose={() => setShowInvite(false)} onSaved={handleSaved} />
+      {showCreate && (
+        <CreateUserModal onClose={() => setShowCreate(false)} onSaved={handleSaved} />
       )}
       {editUser && (
         <ChangeRoleModal user={editUser} onClose={() => setEditUser(null)} onSaved={handleSaved} />
+      )}
+      {deleteUser && (
+        <DeleteConfirmModal user={deleteUser} onClose={() => setDeleteUser(null)} onDeleted={handleDeleted} />
       )}
     </div>
   )
