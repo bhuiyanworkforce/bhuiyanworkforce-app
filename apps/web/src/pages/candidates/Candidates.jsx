@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useLocation } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
+import { useAuth } from '../../context/AuthContext'
 import { Plus, Search, ChevronRight, RefreshCw } from 'lucide-react'
 import {
   CANDIDATE_PIPELINE_STAGES as PIPELINE_STAGES,
@@ -13,12 +14,15 @@ import { ListSkeleton } from '../../components/Skeleton'
 
 const PAGE_SIZE = 20
 
-// stageColor and stageLabel are re-exported so other files that previously
-// imported them from this module (e.g. CandidateDetail) continue to work.
 export { stageColor, stageLabel }
 
 export default function Candidates() {
   const location = useLocation()
+  const { profile } = useAuth()
+  const isAgent     = profile?.role === 'agent'
+  const isAssistant = profile?.role === 'assistant'
+  const canAdd      = !isAgent // assistant can add, agent cannot
+
   const [candidates, setCandidates] = useState([])
   const [loading, setLoading] = useState(true)
   const [searching, setSearching] = useState(false)
@@ -39,23 +43,6 @@ export default function Candidates() {
     }
   }, [location.state])
 
-  // ── Improvement B ──────────────────────────────────────────────────────────
-  // Old approach: SELECT status FROM candidates (fetches every row, counts in JS)
-  // New approach: ask Postgres to GROUP BY status and return only the counts.
-  //
-  // This uses a simple Supabase RPC backed by this SQL function (add once to DB):
-  //
-  //   create or replace function get_candidate_stage_counts()
-  //   returns table(status text, count bigint)
-  //   language sql stable security definer as $$
-  //     select coalesce(status, 'new') as status, count(*) as count
-  //     from candidates
-  //     group by coalesce(status, 'new');
-  //   $$;
-  //
-  // If the RPC isn't available yet (returns an error), we fall back to the
-  // original approach so nothing breaks during the migration.
-  // ───────────────────────────────────────────────────────────────────────────
   const fetchStageCounts = useCallback(async () => {
     const { data, error: rpcError } = await supabase.rpc('get_candidate_stage_counts')
 
@@ -66,7 +53,6 @@ export default function Candidates() {
       return
     }
 
-    // Fallback: original client-side approach
     console.warn('get_candidate_stage_counts RPC not available, falling back:', rpcError?.message)
     const { data: rows } = await supabase.from('candidates').select('status')
     const counts = {}
@@ -144,10 +130,12 @@ export default function Candidates() {
               className="p-2 rounded-xl bg-slate-800 text-slate-400 disabled:opacity-50">
               <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
             </button>
-            <button onClick={() => setShowAdd(true)}
-              className="flex items-center gap-2 bg-gradient-to-r from-emerald-500 to-teal-600 text-white px-4 py-2.5 rounded-xl text-sm font-bold shadow-lg">
-              <Plus size={16} /> Add
-            </button>
+            {canAdd && (
+              <button onClick={() => setShowAdd(true)}
+                className="flex items-center gap-2 bg-gradient-to-r from-emerald-500 to-teal-600 text-white px-4 py-2.5 rounded-xl text-sm font-bold shadow-lg">
+                <Plus size={16} /> Add
+              </button>
+            )}
           </div>
         </div>
 
@@ -184,7 +172,7 @@ export default function Candidates() {
             {candidates.length === 0 ? (
               <div className="text-center py-12">
                 <p className="text-slate-600 text-sm mb-3">{search ? `No results for "${search}"` : 'No candidates found'}</p>
-                {!search && (
+                {!search && canAdd && (
                   <button onClick={() => setShowAdd(true)} className="text-indigo-400 text-sm font-semibold">
                     + Add first candidate
                   </button>
@@ -229,19 +217,22 @@ export default function Candidates() {
         )}
       </div>
 
-      <AddCandidateModal
-        open={showAdd}
-        onClose={() => setShowAdd(false)}
-        onSaved={() => {
-          setShowAdd(false)
-          fetchCandidates(search, filterStage, 0)
-          fetchStageCounts()
-        }}
-      />
+      {canAdd && (
+        <AddCandidateModal
+          open={showAdd}
+          onClose={() => setShowAdd(false)}
+          onSaved={() => {
+            setShowAdd(false)
+            fetchCandidates(search, filterStage, 0)
+            fetchStageCounts()
+          }}
+        />
+      )}
 
       {selected && (
         <CandidateDetail
           candidate={selected}
+          viewOnly={isAgent}
           onClose={() => {
             setSelected(null)
             fetchCandidates(search, filterStage, 0)
