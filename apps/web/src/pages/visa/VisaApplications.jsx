@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { useAuth } from '../../context/AuthContext'
 import { Plus, Search, ChevronRight, AlertTriangle, RefreshCw } from 'lucide-react'
 import AddVisaModal from './AddVisaModal'
 import VisaDetail from './VisaDetail'
@@ -32,20 +33,21 @@ function getFilterLabel(f, apps, counts) {
 }
 
 export default function VisaApplications() {
-  const [apps, setApps]           = useState([])
-  const [loading, setLoading]     = useState(true)
+  const { profile } = useAuth()
+  const isAgent  = profile?.role === 'agent'
+  const canAdd   = !isAgent // assistant + manager + owner can add
+
+  const [apps, setApps]             = useState([])
+  const [loading, setLoading]       = useState(true)
   const [fetchError, setFetchError] = useState('')
-  const [search, setSearch]       = useState('')
-  const [filter, setFilter]     = useState('all')
-  const [showAdd, setShowAdd]   = useState(false)
-  const [selected, setSelected] = useState(null)
+  const [search, setSearch]         = useState('')
+  const [filter, setFilter]         = useState('all')
+  const [showAdd, setShowAdd]       = useState(false)
+  const [selected, setSelected]     = useState(null)
 
   useEffect(() => { fetchApps() }, [])
 
   async function fetchApps() {
-    // FIX: Wrap in try/catch/finally so setLoading(false) is ALWAYS called,
-    // even when the query throws (network error, RLS error, Supabase cold start).
-    // Without this, any thrown exception left loading=true forever on refresh.
     try {
       const { data, error } = await supabase
         .from('visa_applications')
@@ -89,10 +91,12 @@ export default function VisaApplications() {
             <h1 className="text-2xl font-extrabold text-slate-100">Visa</h1>
             <p className="text-slate-500 text-sm">{apps.length} applications</p>
           </div>
-          <button onClick={() => setShowAdd(true)}
-            className="flex items-center gap-2 bg-gradient-to-r from-amber-500 to-orange-600 text-white px-4 py-2.5 rounded-xl text-sm font-bold shadow-lg">
-            <Plus size={16}/> Add
-          </button>
+          {canAdd && (
+            <button onClick={() => setShowAdd(true)}
+              className="flex items-center gap-2 bg-gradient-to-r from-amber-500 to-orange-600 text-white px-4 py-2.5 rounded-xl text-sm font-bold shadow-lg">
+              <Plus size={16}/> Add
+            </button>
+          )}
         </div>
 
         <div className="relative">
@@ -119,8 +123,7 @@ export default function VisaApplications() {
             <AlertTriangle size={24} className="text-red-400" />
             <p className="text-slate-300 text-sm font-semibold">Failed to load visa applications</p>
             <p className="text-slate-500 text-xs">{fetchError}</p>
-            <button onClick={fetchApps}
-              className="flex items-center gap-2 bg-slate-800 text-slate-200 font-bold px-4 py-2 rounded-xl text-sm">
+            <button onClick={fetchApps} className="flex items-center gap-2 bg-slate-800 text-slate-200 font-bold px-4 py-2 rounded-xl text-sm">
               <RefreshCw size={14} /> Retry
             </button>
           </div>
@@ -129,7 +132,9 @@ export default function VisaApplications() {
             {filtered.length === 0 ? (
               <div className="text-center py-12">
                 <p className="text-slate-600 text-sm mb-3">No visa applications found</p>
-                <button onClick={() => setShowAdd(true)} className="text-amber-400 text-sm font-semibold">+ Add first application</button>
+                {canAdd && (
+                  <button onClick={() => setShowAdd(true)} className="text-amber-400 text-sm font-semibold">+ Add first application</button>
+                )}
               </div>
             ) : (
               <ul>
@@ -169,8 +174,12 @@ export default function VisaApplications() {
         )}
       </div>
 
-      {showAdd && <AddVisaModal onClose={() => setShowAdd(false)} onSaved={() => { setShowAdd(false); fetchApps() }}/>}
-      {selected && <VisaDetail visa={selected} onClose={() => setSelected(null)} onUpdated={handleUpdated}/>}
+      {canAdd && showAdd && (
+        <AddVisaModal onClose={() => setShowAdd(false)} onSaved={() => { setShowAdd(false); fetchApps() }}/>
+      )}
+      {selected && (
+        <VisaDetail visa={selected} viewOnly={isAgent} onClose={() => setSelected(null)} onUpdated={handleUpdated}/>
+      )}
     </>
   )
 }
