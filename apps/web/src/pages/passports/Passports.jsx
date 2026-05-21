@@ -313,4 +313,49 @@ export default function Passports() {
                         <div className="w-10 h-10 rounded-full bg-indigo-500/15 flex items-center justify-center text-indigo-400 font-bold text-sm flex-none">
                           {p.candidates?.full_name?.[0]?.toUpperCase()}
                         </div>
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-slate-200 text-sm font-semibold truncate">{p.candidates?.full_name}</p>
+                        <p className="text-slate-500 text-xs font-mono">{p.passport_no}</p>
+                        {isExpiringSoon(p.expiry_date) && (
+                          <p className="text-amber-400 text-xs mt-0.5">Expires {new Date(p.expiry_date).toLocaleDateString()}</p>
+                        )}
+                      </div>
+                      <span className={"text-[10px] font-bold uppercase tracking-wide px-2 py-1 rounded-full " + (STATUS_COLOR[p.status] || 'bg-slate-700 text-slate-300')}>
+                        {p.status?.replaceAll('_', ' ')}
+                      </span>
+                      {!bulkMode && <ChevronRight size={16} className="text-slate-600 flex-none"/>}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {hasMore && (
+              <button onClick={loadMore} disabled={loadingMore} className="w-full py-3 text-indigo-400 text-sm font-bold border-t border-slate-800 disabled:opacity-50">
+                {loadingMore ? 'Loading...' : 'Load More'}
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {canAdd && (
+        <AddPassportModal
+          open={showAdd}
+          onClose={() => setShowAdd(false)}
+          onSaved={() => { setShowAdd(false); fetchPassports(search, statusFilter, dateFrom, dateTo, 0) }}
+        />
+      )}
+      {canAdd && (
+        <SmartPassportUpload
+          open={showSmartUpload}
+          onClose={() => setShowSmartUpload(false)}
+          onSaved={() => { setShowSmartUpload(false); fetchPassports(search, statusFilter, dateFrom, dateTo, 0) }}
+        />
+      )}
+      {selected && !bulkMode && (
+        <PassportDetail passport={selected} viewOnly={isAgent} onClose={() => setSelected(null)} onUpdated={handleUpdated}/>
+      )}
+    </>
+  )
+}
