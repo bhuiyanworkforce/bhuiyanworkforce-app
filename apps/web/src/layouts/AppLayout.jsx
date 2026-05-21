@@ -17,6 +17,7 @@ const NAV = [
   { to: 'passports', label: 'Passports', icon: Stamp, group: 'core' },
   { to: 'visa', label: 'Visa', icon: FileText, group: 'core' },
   { to: 'candidates', label: 'Candidates', icon: Users, group: 'core' },
+  { to: 'job-categories', label: 'Job Categories', icon: Briefcase, group: 'core' },
   { to: 'agents', label: 'Agents', icon: UserCircle, group: 'core' },
   { to: 'employees', label: 'Employees', icon: Briefcase, group: 'core' },
   { to: 'users', label: 'Users', icon: Shield, group: 'core' },
