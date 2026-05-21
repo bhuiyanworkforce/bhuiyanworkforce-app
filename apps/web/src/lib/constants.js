@@ -114,7 +114,7 @@ export const JOB_CATEGORIES_PRESET = [
   { name: 'Carpenter',           icon: '🪵', color: 'bg-lime-500/15 text-lime-400'     },
   { name: 'Mason / Bricklayer',  icon: '🧱', color: 'bg-stone-500/15 text-stone-400'  },
   { name: 'Painter',             icon: '🎨', color: 'bg-pink-500/15 text-pink-400'     },
-  { name: 'Chef / Cook',         icon: '👨‍🍳', color: 'bg-red-500/15 text-red-400'       },
+  { name: 'Chef / Cook',         icon: '🍳', color: 'bg-red-500/15 text-red-400'       },
   { name: 'Driver',              icon: '🚗', color: 'bg-cyan-500/15 text-cyan-400'     },
   { name: 'Cleaner / Housekeeping', icon: '🧹', color: 'bg-teal-500/15 text-teal-400' },
   { name: 'Security Guard',      icon: '🛡️', color: 'bg-indigo-500/15 text-indigo-400'},
