@@ -127,6 +127,7 @@ const Refunds          = lazyWithRetry(() => import('./pages/refunds/Refunds'), 
 const AuditLog         = lazyWithRetry(() => import('./pages/auditlog/AuditLog'),           'audit-log')
 const Employees        = lazyWithRetry(() => import('./pages/employees/Employees'),         'employees')
 const Users            = lazyWithRetry(() => import('./pages/users/Users'),                 'users')
+const JobCategories    = lazyWithRetry(() => import('./pages/jobs/JobCategories'),           'job-categories')
 const Login            = lazyWithRetry(() => import('./pages/auth/Login'),                  'login')
 
 function PageSpinner() {
@@ -177,6 +178,7 @@ export default function App() {
               <Route path="audit-log"  element={<AuditLog />} />
               <Route path="employees"  element={<Employees />} />
               <Route path="users"      element={<Users />} />
+              <Route path="job-categories" element={<JobCategories />} />
             </Route>
           </Routes>
         </Suspense>
