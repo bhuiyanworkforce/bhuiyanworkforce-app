@@ -9,6 +9,7 @@ import {
   stageLabel,
 } from '../../lib/constants'
 import AddCandidateModal from './AddCandidateModal'
+import SmartPassportUpload from '../passports/SmartPassportUpload'
 import CandidateDetail from './CandidateDetail'
 import { ListSkeleton } from '../../components/Skeleton'
 
@@ -32,6 +33,7 @@ export default function Candidates() {
   const [search, setSearch] = useState('')
   const [filterStage, setFilterStage] = useState('all')
   const [showAdd, setShowAdd] = useState(false)
+  const [showSmartUpload, setShowSmartUpload] = useState(false)
   const [selected, setSelected] = useState(null)
   const [stageCounts, setStageCounts] = useState({})
   const [error, setError] = useState(null)
@@ -73,7 +75,7 @@ export default function Candidates() {
     try {
       let query = supabase
         .from('candidates')
-        .select('*, agents(full_name)')
+        .select('*, agents(full_name), job_categories(name, icon, color)')
         .order('created_at', { ascending: false })
         .range(newOffset, newOffset + PAGE_SIZE - 1)
 
@@ -131,10 +133,16 @@ export default function Candidates() {
               <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
             </button>
             {canAdd && (
-              <button onClick={() => setShowAdd(true)}
-                className="flex items-center gap-2 bg-gradient-to-r from-emerald-500 to-teal-600 text-white px-4 py-2.5 rounded-xl text-sm font-bold shadow-lg">
-                <Plus size={16} /> Add
-              </button>
+              <div className="flex items-center gap-2">
+                <button onClick={() => setShowSmartUpload(true)}
+                  className="flex items-center gap-2 bg-gradient-to-r from-emerald-500 to-teal-600 text-white px-4 py-2.5 rounded-xl text-sm font-bold shadow-lg">
+                  <Plus size={16} /> Smart Upload
+                </button>
+                <button onClick={() => setShowAdd(true)}
+                  className="flex items-center gap-2 bg-slate-800 border border-slate-700 text-slate-300 px-3 py-2.5 rounded-xl text-sm font-bold">
+                  <Plus size={16} />
+                </button>
+              </div>
             )}
           </div>
         </div>
@@ -199,6 +207,11 @@ export default function Candidates() {
                           <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${stageColor(c.status || 'new')}`}>
                             {stageLabel(c.status || 'new')}
                           </span>
+                          {c.job_categories && (
+                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${c.job_categories.color}`}>
+                              {c.job_categories.icon} {c.job_categories.name}
+                            </span>
+                          )}
                           <ChevronRight size={16} className="text-slate-600" />
                         </div>
                       </button>
@@ -223,6 +236,18 @@ export default function Candidates() {
           onClose={() => setShowAdd(false)}
           onSaved={() => {
             setShowAdd(false)
+            fetchCandidates(search, filterStage, 0)
+            fetchStageCounts()
+          }}
+        />
+      )}
+
+      {canAdd && (
+        <SmartPassportUpload
+          open={showSmartUpload}
+          onClose={() => setShowSmartUpload(false)}
+          onSaved={() => {
+            setShowSmartUpload(false)
             fetchCandidates(search, filterStage, 0)
             fetchStageCounts()
           }}
