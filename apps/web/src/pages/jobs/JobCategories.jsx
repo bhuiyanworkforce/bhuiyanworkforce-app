@@ -1,10 +1,9 @@
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
-import { useNavigate } from 'react-router-dom'
 import {
-  Briefcase, Users, ChevronRight, Search,
-  Plus, X, RefreshCw, Filter
+  Briefcase, ChevronRight, Search,
+  Plus, X, RefreshCw
 } from 'lucide-react'
 import SmartPassportUpload from '../passports/SmartPassportUpload'
 import CandidateDetail from '../candidates/CandidateDetail'
@@ -12,51 +11,67 @@ import { stageColor, stageLabel } from '../candidates/Candidates'
 
 export default function JobCategories() {
   const { profile } = useAuth()
-  const navigate = useNavigate()
-  const isAgent     = profile?.role === 'agent'
-  const isAssistant = profile?.role === 'assistant'
-  const canAdd      = !isAgent
+  const isAgent = profile?.role === 'agent'
+  const canAdd  = !isAgent
 
-  const [categories, setCategories]     = useState([])
-  const [selected, setSelected]         = useState(null)   // active category
-  const [candidates, setCandidates]     = useState([])
-  const [loadingCats, setLoadingCats]   = useState(true)
-  const [loadingCands, setLoadingCands] = useState(false)
-  const [search, setSearch]             = useState('')
-  const [showUpload, setShowUpload]     = useState(false)
+  const [categories, setCategories]       = useState([])
+  const [selected, setSelected]           = useState(null)
+  const [candidates, setCandidates]       = useState([])
+  const [loadingCats, setLoadingCats]     = useState(true)
+  const [loadingCands, setLoadingCands]   = useState(false)
+  const [search, setSearch]               = useState('')
+  const [showUpload, setShowUpload]       = useState(false)
   const [openCandidate, setOpenCandidate] = useState(null)
-  const [refreshing, setRefreshing]     = useState(false)
+  const [refreshing, setRefreshing]       = useState(false)
+  const [unassignedCount, setUnassignedCount] = useState(0)
 
-  // ── Load categories with counts ─────────────────────────────
+  // ── Load categories with counts ───────────────────────────
   const fetchCategories = useCallback(async () => {
     setLoadingCats(true)
-    const { data } = await supabase
-      .from('job_categories')
-      .select('*, candidates(count)')
-      .order('sort_order')
-    setCategories(data || [])
+
+    const [{ data: cats }, { data: allCands }, { count: unassigned }] = await Promise.all([
+      supabase.from('job_categories').select('*').order('sort_order'),
+      supabase.from('candidates').select('job_category_id').not('job_category_id', 'is', null),
+      supabase.from('candidates').select('*', { count: 'exact', head: true }).is('job_category_id', null),
+    ])
+
+    const countMap = {}
+    for (const c of allCands || []) {
+      countMap[c.job_category_id] = (countMap[c.job_category_id] || 0) + 1
+    }
+
+    setCategories((cats || []).map(cat => ({ ...cat, candidateCount: countMap[cat.id] || 0 })))
+    setUnassignedCount(unassigned || 0)
     setLoadingCats(false)
   }, [])
 
   useEffect(() => { fetchCategories() }, [fetchCategories])
 
-  // ── Load candidates for selected category ───────────────────
+  // ── Load candidates for selected category ─────────────────
   const fetchCandidates = useCallback(async (catId, searchTerm = '') => {
     if (!catId) { setCandidates([]); return }
     setLoadingCands(true)
 
-    let q = supabase
-      .from('candidates')
-      .select('*, agents(full_name), job_categories(name, icon, color)')
-      .eq('job_category_id', catId)
-      .order('created_at', { ascending: false })
-
-    if (searchTerm.trim()) {
-      q = q.ilike('full_name', `%${searchTerm.trim()}%`)
+    if (catId === '__unassigned__') {
+      let q = supabase
+        .from('candidates')
+        .select('*, agents(full_name)')
+        .is('job_category_id', null)
+        .order('created_at', { ascending: false })
+      if (searchTerm.trim()) q = q.ilike('full_name', `%${searchTerm.trim()}%`)
+      const { data } = await q
+      setCandidates(data || [])
+    } else {
+      let q = supabase
+        .from('candidates')
+        .select('*, agents(full_name), job_categories(name, icon, color)')
+        .eq('job_category_id', catId)
+        .order('created_at', { ascending: false })
+      if (searchTerm.trim()) q = q.ilike('full_name', `%${searchTerm.trim()}%`)
+      const { data } = await q
+      setCandidates(data || [])
     }
 
-    const { data } = await q
-    setCandidates(data || [])
     setLoadingCands(false)
   }, [])
 
@@ -66,10 +81,7 @@ export default function JobCategories() {
 
   async function handleRefresh() {
     setRefreshing(true)
-    await Promise.all([
-      fetchCategories(),
-      fetchCandidates(selected?.id, search),
-    ])
+    await Promise.all([fetchCategories(), fetchCandidates(selected?.id, search)])
     setRefreshing(false)
   }
 
@@ -77,32 +89,6 @@ export default function JobCategories() {
     fetchCategories()
     if (selected) fetchCandidates(selected.id, search)
   }
-
-  // ── Unassigned count ─────────────────────────────────────────
-  const [unassignedCount, setUnassignedCount] = useState(0)
-  useEffect(() => {
-    supabase
-      .from('candidates')
-      .select('*', { count: 'exact', head: true })
-      .is('job_category_id', null)
-      .then(({ count }) => setUnassignedCount(count || 0))
-  }, [categories])
-
-  const [unassignedCands, setUnassignedCands] = useState([])
-  useEffect(() => {
-    if (selected?.id === '__unassigned__') {
-      setLoadingCands(true)
-      let q = supabase
-        .from('candidates')
-        .select('*, agents(full_name)')
-        .is('job_category_id', null)
-        .order('created_at', { ascending: false })
-      if (search.trim()) q = q.ilike('full_name', `%${search.trim()}%`)
-      q.then(({ data }) => { setUnassignedCands(data || []); setLoadingCands(false) })
-    }
-  }, [selected, search])
-
-  const displayCandidates = selected?.id === '__unassigned__' ? unassignedCands : candidates
 
   return (
     <div className="flex flex-col gap-5">
@@ -116,11 +102,7 @@ export default function JobCategories() {
           <p className="text-slate-500 text-xs mt-0.5">Workers sorted by job type</p>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            onClick={handleRefresh}
-            disabled={refreshing}
-            className="p-2 text-slate-500 hover:text-slate-300 transition-colors"
-          >
+          <button onClick={handleRefresh} disabled={refreshing} className="p-2 text-slate-500 hover:text-slate-300 transition-colors">
             <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
           </button>
           {canAdd && (
@@ -145,7 +127,7 @@ export default function JobCategories() {
         <>
           <div className="grid grid-cols-2 gap-3">
             {categories.map(cat => {
-              const count = cat.candidates?.[0]?.count ?? 0
+              const count = cat.candidateCount || 0
               const isActive = selected?.id === cat.id
               return (
                 <button
@@ -176,7 +158,7 @@ export default function JobCategories() {
             {/* Unassigned tile */}
             {unassignedCount > 0 && (
               <button
-                onClick={() => setSelected(selected?.id === '__unassigned__' ? null : { id: '__unassigned__', name: 'Unassigned', icon: '❓' })}
+                onClick={() => setSelected(selected?.id === '__unassigned__' ? null : { id: '__unassigned__', name: 'No Category', icon: '?' })}
                 className={`
                   flex items-center gap-3 px-4 py-4 rounded-2xl border text-left transition-all
                   ${selected?.id === '__unassigned__'
@@ -185,7 +167,7 @@ export default function JobCategories() {
                   }
                 `}
               >
-                <span className="text-2xl leading-none">❓</span>
+                <span className="text-2xl leading-none">?</span>
                 <div>
                   <p className="text-sm font-semibold text-slate-300">No Category</p>
                   <p className="text-xs text-slate-500 mt-0.5">{unassignedCount} worker{unassignedCount !== 1 ? 's' : ''}</p>
@@ -202,7 +184,7 @@ export default function JobCategories() {
                   <span className="text-xl">{selected.icon}</span>
                   {selected.name}
                 </h2>
-                <button onClick={() => setSelected(null)} className="text-slate-600 hover:text-slate-400 p-1">
+                <button onClick={() => { setSelected(null); setCandidates([]) }} className="text-slate-600 hover:text-slate-400 p-1">
                   <X size={16} />
                 </button>
               </div>
@@ -213,7 +195,7 @@ export default function JobCategories() {
                 <input
                   value={search}
                   onChange={e => setSearch(e.target.value)}
-                  placeholder="Search workers…"
+                  placeholder="Search workers..."
                   className="w-full bg-slate-800 border border-slate-700 rounded-xl pl-9 pr-4 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500"
                 />
                 {search && (
@@ -225,17 +207,17 @@ export default function JobCategories() {
 
               {loadingCands ? (
                 <div className="flex flex-col gap-2">
-                  {[1,2,3].map(i => (
+                  {[1, 2, 3].map(i => (
                     <div key={i} className="h-16 bg-slate-800/40 rounded-xl animate-pulse" />
                   ))}
                 </div>
-              ) : displayCandidates.length === 0 ? (
+              ) : candidates.length === 0 ? (
                 <div className="text-center py-10 text-slate-500 text-sm">
                   {search ? 'No workers match your search' : 'No workers in this category yet'}
                 </div>
               ) : (
                 <div className="flex flex-col gap-2">
-                  {displayCandidates.map(c => (
+                  {candidates.map(c => (
                     <button
                       key={c.id}
                       onClick={() => setOpenCandidate(c)}
@@ -267,14 +249,12 @@ export default function JobCategories() {
         </>
       )}
 
-      {/* Smart upload modal */}
       <SmartPassportUpload
         open={showUpload}
         onClose={() => setShowUpload(false)}
         onSaved={handleSaved}
       />
 
-      {/* Candidate detail */}
       {openCandidate && (
         <CandidateDetail
           candidate={openCandidate}
