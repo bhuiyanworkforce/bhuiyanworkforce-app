@@ -103,3 +103,28 @@ export const VENDOR_CATEGORIES = ['general', 'embassy', 'medical', 'travel', 'pr
 
 // ─── Employee roles ────────────────────────────────────────────────────────────
 export const EMPLOYEE_ROLES = ['manager', 'accountant', 'visa_officer', 'passport_officer', 'receptionist', 'driver', 'peon', 'other']
+
+// ─── Job categories (mirrors supabase seed data) ───────────────────────────────
+// Used as fallback when DB is unavailable and for display references.
+export const JOB_CATEGORIES_PRESET = [
+  { name: 'Construction Worker', icon: '🏗️', color: 'bg-orange-500/15 text-orange-400' },
+  { name: 'Welder',              icon: '🔧', color: 'bg-yellow-500/15 text-yellow-400' },
+  { name: 'Electrician',         icon: '⚡', color: 'bg-amber-500/15 text-amber-400'   },
+  { name: 'Plumber',             icon: '🪠', color: 'bg-blue-500/15 text-blue-400'     },
+  { name: 'Carpenter',           icon: '🪵', color: 'bg-lime-500/15 text-lime-400'     },
+  { name: 'Mason / Bricklayer',  icon: '🧱', color: 'bg-stone-500/15 text-stone-400'  },
+  { name: 'Painter',             icon: '🎨', color: 'bg-pink-500/15 text-pink-400'     },
+  { name: 'Chef / Cook',         icon: '👨‍🍳', color: 'bg-red-500/15 text-red-400'       },
+  { name: 'Driver',              icon: '🚗', color: 'bg-cyan-500/15 text-cyan-400'     },
+  { name: 'Cleaner / Housekeeping', icon: '🧹', color: 'bg-teal-500/15 text-teal-400' },
+  { name: 'Security Guard',      icon: '🛡️', color: 'bg-indigo-500/15 text-indigo-400'},
+  { name: 'Warehouse Worker',    icon: '📦', color: 'bg-violet-500/15 text-violet-400'},
+  { name: 'Factory Worker',      icon: '🏭', color: 'bg-purple-500/15 text-purple-400'},
+  { name: 'HVAC Technician',     icon: '❄️', color: 'bg-sky-500/15 text-sky-400'      },
+  { name: 'Mechanic',            icon: '🔩', color: 'bg-zinc-500/15 text-zinc-400'    },
+  { name: 'Steel Fabricator',    icon: '⚙️', color: 'bg-slate-500/15 text-slate-400'  },
+  { name: 'Scaffolder',          icon: '🪜', color: 'bg-emerald-500/15 text-emerald-400'},
+  { name: 'Nurse / Caregiver',   icon: '🏥', color: 'bg-rose-500/15 text-rose-400'   },
+  { name: 'IT Technician',       icon: '💻', color: 'bg-blue-500/15 text-blue-400'    },
+  { name: 'General Labour',      icon: '👷', color: 'bg-gray-500/15 text-gray-400'    },
+]
