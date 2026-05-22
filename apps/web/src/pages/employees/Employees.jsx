@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../../lib/supabase'
-import { Plus, X, Users, ChevronRight, ToggleLeft, ToggleRight, RefreshCw, AlertCircle } from 'lucide-react'
+import { Plus, X, Users, ChevronRight, ToggleLeft, ToggleRight, RefreshCw, AlertCircle, Trash2 } from 'lucide-react'
 import { EMPLOYEE_ROLES as ROLES } from '../../lib/constants'
 import { Spinner, ListSkeleton } from '../../components/Skeleton'
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
@@ -85,6 +85,14 @@ function EmployeeDetail({ employee: initial, onClose, onUpdated }) {
   const [saving, setSaving] = useState(false)
   const [editError, setEditError] = useState('')
   const [toggleError, setToggleError] = useState('')
+  const [confirmDelete, setConfirmDelete] = useState(false)
+
+  async function handleDelete() {
+    await supabase.from('employee_payroll').delete().eq('employee_id', employee.id)
+    await supabase.from('employees').delete().eq('id', employee.id)
+    onUpdated()
+    onClose()
+  }
 
   useEffect(() => {
     supabase.from('employee_payroll').select('*').eq('employee_id', employee.id)
@@ -134,6 +142,18 @@ function EmployeeDetail({ employee: initial, onClose, onUpdated }) {
           <p className="text-slate-500 text-xs capitalize">{employee.role?.replace('_', ' ')} {employee.phone ? '· ' + employee.phone : ''}</p>
         </div>
         <button type="button" onClick={() => { setEditing(true); setEditError('') }} className="text-xs text-indigo-400 font-bold px-3 py-1.5 bg-indigo-500/10 rounded-xl">Edit</button>
+        {confirmDelete ? (
+          <div className="flex items-center gap-2">
+            <button onClick={() => setConfirmDelete(false)} className="text-xs text-slate-500 px-2 py-1">Cancel</button>
+            <button onClick={handleDelete} className="flex items-center gap-1 bg-red-500/20 text-red-400 px-3 py-1.5 rounded-xl text-xs font-semibold">
+              <Trash2 size={13}/> Confirm
+            </button>
+          </div>
+        ) : (
+          <button onClick={() => setConfirmDelete(true)} className="text-slate-600 hover:text-red-400 transition-colors p-1.5">
+            <Trash2 size={16}/>
+          </button>
+        )}
       </div>
 
       <div className="p-4 flex flex-col gap-4">
