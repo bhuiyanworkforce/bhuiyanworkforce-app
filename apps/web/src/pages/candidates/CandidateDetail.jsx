@@ -49,6 +49,12 @@ export default function CandidateDetail({ candidate: initialCandidate, onClose }
   const [updatingStage, setUpdatingStage] = useState(false)
   const [stageError, setStageError]       = useState('')
   const [showEdit, setShowEdit]           = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+
+  async function handleDeleteCandidate() {
+    await supabase.from('candidates').delete().eq('id', candidate.id)
+    onClose()
+  }
 
   // ── Improvement F ──────────────────────────────────────────────────────────
   // The document delete button previously called the native confirm() dialog,
@@ -334,11 +340,25 @@ export default function CandidateDetail({ candidate: initialCandidate, onClose }
             <button onClick={onClose}><X size={20} className="text-slate-400"/></button>
             <h2 className="text-slate-100 font-bold text-base truncate">{candidate.full_name}</h2>
           </div>
-          <button
-            onClick={() => setShowEdit(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold transition-colors flex-none">
-            <Edit2 size={13}/> Edit
-          </button>
+          <div className="flex items-center gap-2 flex-none">
+            {confirmDelete ? (
+              <>
+                <button onClick={() => setConfirmDelete(false)} className="text-xs text-slate-500 px-2 py-1">Cancel</button>
+                <button onClick={handleDeleteCandidate} className="flex items-center gap-1 bg-red-500/20 text-red-400 px-3 py-1.5 rounded-xl text-xs font-semibold">
+                  <Trash2 size={13}/> Confirm
+                </button>
+              </>
+            ) : (
+              <button onClick={() => setConfirmDelete(true)} className="text-slate-600 hover:text-red-400 transition-colors p-1.5">
+                <Trash2 size={16}/>
+              </button>
+            )}
+            <button
+              onClick={() => setShowEdit(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold transition-colors">
+              <Edit2 size={13}/> Edit
+            </button>
+          </div>
         </div>
 
         <div className="overflow-y-auto flex-1 px-4 py-5 flex flex-col gap-4">
