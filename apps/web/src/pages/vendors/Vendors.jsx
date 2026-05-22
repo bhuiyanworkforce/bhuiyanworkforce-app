@@ -1,7 +1,7 @@
 import PropTypes from 'prop-types'
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
-import { Plus, Search, Building2, X, ChevronRight, AlertTriangle, RefreshCw } from 'lucide-react'
+import { Plus, Search, Building2, X, ChevronRight, AlertTriangle, RefreshCw, Trash2 } from 'lucide-react'
 import { Spinner, ListSkeleton } from '../../components/Skeleton'
 
 const VCATEGORIES = ['general','embassy','medical','travel','printing','bank','other']
@@ -181,6 +181,13 @@ export default function Vendors() {
   const [search, setSearch] = useState('')
   const [showAdd, setShowAdd] = useState(false)
   const [selected, setSelected] = useState(null)
+  const [confirmDelete, setConfirmDelete] = useState(null)
+
+  async function handleDelete(id) {
+    await supabase.from('vendors').delete().eq('id', id)
+    setConfirmDelete(null)
+    fetchVendors()
+  }
 
   useEffect(() => { fetchVendors() }, [])
 
@@ -264,6 +271,16 @@ export default function Vendors() {
                     {v.total_spent > 0 && <p className="text-amber-400 text-sm font-bold flex-none">৳{Number.parseFloat(v.total_spent).toLocaleString()}</p>}
                     <ChevronRight size={16} className="text-slate-600 flex-none"/>
                   </button>
+                  {confirmDelete === v.id ? (
+                    <div className="flex flex-col items-end gap-1 flex-none">
+                      <button onClick={() => handleDelete(v.id)} className="text-xs bg-red-500/20 text-red-400 px-2 py-0.5 rounded-full font-semibold">Delete</button>
+                      <button onClick={() => setConfirmDelete(null)} className="text-xs text-slate-600 px-2 py-0.5">Cancel</button>
+                    </div>
+                  ) : (
+                    <button onClick={() => setConfirmDelete(v.id)} className="text-slate-600 hover:text-red-400 transition-colors p-1 flex-none">
+                      <Trash2 size={15}/>
+                    </button>
+                  )}
                 </li>
               ))}
             </ul>
