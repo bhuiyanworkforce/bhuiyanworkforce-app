@@ -1,7 +1,7 @@
 import PropTypes from 'prop-types'
 import { useState } from 'react'
 import { supabase } from '../../lib/supabase'
-import { X, CheckCircle, Circle, Clock, AlertCircle, Edit2, Save } from 'lucide-react'
+import { X, CheckCircle, Circle, Clock, AlertCircle, Edit2, Save, Trash2 } from 'lucide-react'
 
 const WORKFLOW = [
   { key: 'draft',      label: 'Draft',      desc: 'Application created, not yet submitted' },
@@ -55,6 +55,13 @@ export default function VisaDetail({ visa: initialVisa, onClose, onUpdated }) {
     notes:     initialVisa.notes     || '',
   })
   const [saving, setSaving] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+
+  async function handleDelete() {
+    await supabase.from('visa_applications').delete().eq('id', visa.id)
+    onUpdated()
+    onClose()
+  }
 
   const currentIndex = STATUS_INDEX[visa.status] ?? 0
   const isTerminal = visa.status === 'approved' || visa.status === 'rejected'
@@ -100,11 +107,25 @@ export default function VisaDetail({ visa: initialVisa, onClose, onUpdated }) {
             </span>
           </div>
         </div>
-        <button onClick={() => setEditing(e => !e)}
-          className={"flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-bold " + (editing ? 'bg-amber-500/15 text-amber-400' : 'bg-slate-800 text-slate-400')}>
-          {editing ? <Save size={13}/> : <Edit2 size={13}/>}
-          {editing ? 'Cancel' : 'Edit'}
-        </button>
+        <div className="flex items-center gap-2">
+          {confirmDelete ? (
+            <>
+              <button onClick={() => setConfirmDelete(false)} className="text-xs text-slate-500 px-2 py-1">Cancel</button>
+              <button onClick={handleDelete} className="flex items-center gap-1 bg-red-500/20 text-red-400 px-3 py-1.5 rounded-xl text-xs font-semibold">
+                <Trash2 size={13}/> Confirm
+              </button>
+            </>
+          ) : (
+            <button onClick={() => setConfirmDelete(true)} className="text-slate-600 hover:text-red-400 transition-colors p-1.5">
+              <Trash2 size={16}/>
+            </button>
+          )}
+          <button onClick={() => setEditing(e => !e)}
+            className={"flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-bold " + (editing ? 'bg-amber-500/15 text-amber-400' : 'bg-slate-800 text-slate-400')}>
+            {editing ? <Save size={13}/> : <Edit2 size={13}/>}
+            {editing ? 'Cancel' : 'Edit'}
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4">
