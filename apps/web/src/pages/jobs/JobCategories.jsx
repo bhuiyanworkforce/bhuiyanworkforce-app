@@ -3,7 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import {
   Briefcase, ChevronRight, Search,
-  Plus, X, RefreshCw
+  Plus, X, RefreshCw, Trash2
 } from 'lucide-react'
 import SmartPassportUpload from '../passports/SmartPassportUpload'
 import CandidateDetail from '../candidates/CandidateDetail'
@@ -24,6 +24,14 @@ export default function JobCategories() {
   const [openCandidate, setOpenCandidate] = useState(null)
   const [refreshing, setRefreshing]       = useState(false)
   const [unassignedCount, setUnassignedCount] = useState(0)
+  const [confirmDelete, setConfirmDelete] = useState(null)
+
+  async function handleDeleteCandidate(id) {
+    await supabase.from('candidates').delete().eq('id', id)
+    setConfirmDelete(null)
+    fetchCategories()
+    if (selected) fetchCandidates(selected.id, search)
+  }
 
   // ── Load categories with counts ───────────────────────────
   const fetchCategories = useCallback(async () => {
@@ -218,29 +226,40 @@ export default function JobCategories() {
               ) : (
                 <div className="flex flex-col gap-2">
                   {candidates.map(c => (
-                    <button
-                      key={c.id}
-                      onClick={() => setOpenCandidate(c)}
-                      className="flex items-center gap-3 bg-slate-800/50 hover:bg-slate-800 border border-slate-700/60 rounded-xl px-4 py-3 text-left transition-colors"
-                    >
-                      <div className="w-9 h-9 rounded-full bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center shrink-0">
-                        <span className="text-indigo-300 font-bold text-sm">
-                          {c.full_name?.charAt(0)?.toUpperCase() || '?'}
-                        </span>
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-semibold text-slate-100 truncate">{c.full_name}</p>
-                        <div className="flex items-center gap-2 mt-0.5">
-                          <span className={`text-xs px-2 py-0.5 rounded-full ${stageColor(c.status)}`}>
-                            {stageLabel(c.status)}
+                    <div key={c.id} className="flex items-center gap-2 bg-slate-800/50 hover:bg-slate-800 border border-slate-700/60 rounded-xl px-4 py-3 transition-colors">
+                      <button
+                        onClick={() => setOpenCandidate(c)}
+                        className="flex items-center gap-3 flex-1 min-w-0 text-left"
+                      >
+                        <div className="w-9 h-9 rounded-full bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center shrink-0">
+                          <span className="text-indigo-300 font-bold text-sm">
+                            {c.full_name?.charAt(0)?.toUpperCase() || '?'}
                           </span>
-                          {c.agents?.full_name && (
-                            <span className="text-xs text-slate-600 truncate">via {c.agents.full_name}</span>
-                          )}
                         </div>
-                      </div>
-                      <ChevronRight size={14} className="text-slate-600 shrink-0" />
-                    </button>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-semibold text-slate-100 truncate">{c.full_name}</p>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <span className={`text-xs px-2 py-0.5 rounded-full ${stageColor(c.status)}`}>
+                              {stageLabel(c.status)}
+                            </span>
+                            {c.agents?.full_name && (
+                              <span className="text-xs text-slate-600 truncate">via {c.agents.full_name}</span>
+                            )}
+                          </div>
+                        </div>
+                        <ChevronRight size={14} className="text-slate-600 shrink-0" />
+                      </button>
+                      {confirmDelete === c.id ? (
+                        <div className="flex flex-col items-end gap-1 shrink-0">
+                          <button onClick={() => handleDeleteCandidate(c.id)} className="text-xs bg-red-500/20 text-red-400 px-2 py-0.5 rounded-full font-semibold">Delete</button>
+                          <button onClick={() => setConfirmDelete(null)} className="text-xs text-slate-600 px-2 py-0.5">Cancel</button>
+                        </div>
+                      ) : (
+                        <button onClick={() => setConfirmDelete(c.id)} className="text-slate-600 hover:text-red-400 transition-colors p-1 shrink-0">
+                          <Trash2 size={15}/>
+                        </button>
+                      )}
+                    </div>
                   ))}
                 </div>
               )}
