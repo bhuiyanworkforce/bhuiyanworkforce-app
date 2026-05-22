@@ -1,8 +1,8 @@
 import PropTypes from 'prop-types'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useSupabaseQuery } from '../../hooks/useSupabaseQuery'
 import { supabase } from '../../lib/supabase'
-import { Plus, X, ChevronRight, AlertTriangle, RefreshCw } from 'lucide-react'
+import { Plus, X, ChevronRight, AlertTriangle, RefreshCw, Trash2 } from 'lucide-react'
 import { ListSkeleton } from '../../components/Skeleton'
 
 const STATUS_COLOR = { pending:'bg-amber-500/15 text-amber-400', cleared:'bg-emerald-500/15 text-emerald-400', bounced:'bg-red-500/15 text-red-400', cancelled:'bg-slate-500/15 text-slate-400' }
@@ -200,6 +200,13 @@ export default function Cheques() {
   const [filter, setFilter] = useState('all')
   const [showAdd, setShowAdd] = useState(false)
   const [selected, setSelected] = useState(null)
+  const [confirmDelete, setConfirmDelete] = useState(null)
+
+  async function handleDelete(id) {
+    await supabase.from('cheques').delete().eq('id', id)
+    setConfirmDelete(null)
+    refresh()
+  }
   const [refreshing, setRefreshing] = useState(false)
 
   const { data: cheques, loading, error, refresh } = useSupabaseQuery(
@@ -257,7 +264,7 @@ export default function Cheques() {
           {filtered.length === 0 ? <p className="text-center text-slate-600 py-12 text-sm">No cheques found</p> : (
             <ul>{filtered.map((c,i)=>(
               <li key={c.id} className={`flex items-start gap-2 px-4 py-4 transition-colors ${i<filtered.length-1?'border-b border-slate-800':''}`}>
-                <button type="button" onClick={()=>setSelected(c)} className="flex items-start gap-2 w-full text-left active:bg-slate-800">
+                <button type="button" onClick={()=>setSelected(c)} className="flex items-start gap-2 flex-1 min-w-0 text-left active:bg-slate-800">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
                       <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${TYPE_COLOR[c.type]}`}>{c.type}</span>
@@ -269,9 +276,20 @@ export default function Cheques() {
                   </div>
                   <div className="flex flex-col items-end gap-2 flex-none">
                     <p className="text-white font-bold text-sm">৳{Number.parseFloat(c.amount).toLocaleString()}</p>
-                    <ChevronRight size={16} className="text-slate-600"/>
                   </div>
                 </button>
+                <div className="flex flex-col items-center gap-1 flex-none pt-1">
+                  {confirmDelete === c.id ? (
+                    <div className="flex flex-col items-end gap-1">
+                      <button onClick={() => handleDelete(c.id)} className="text-xs bg-red-500/20 text-red-400 px-2 py-0.5 rounded-full font-semibold">Delete</button>
+                      <button onClick={() => setConfirmDelete(null)} className="text-xs text-slate-600 px-2 py-0.5">Cancel</button>
+                    </div>
+                  ) : (
+                    <button onClick={() => setConfirmDelete(c.id)} className="text-slate-600 hover:text-red-400 transition-colors p-1">
+                      <Trash2 size={15}/>
+                    </button>
+                  )}
+                </div>
               </li>
             ))}</ul>
           )}
