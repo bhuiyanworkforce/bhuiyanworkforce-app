@@ -2,7 +2,7 @@ import PropTypes from 'prop-types'
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import EditPassportModal from './EditPassportModal'
-import { X, ChevronRight, CheckCircle, Circle, Clock, AlertCircle, Pencil } from 'lucide-react'
+import { X, ChevronRight, CheckCircle, Circle, Clock, AlertCircle, Pencil, Trash2 } from 'lucide-react'
 import { Spinner } from '../../components/Skeleton'
 
 const WORKFLOW = [
@@ -57,6 +57,14 @@ export default function PassportDetail({ passport: initialPassport, onClose, onU
   const [cancelling, setCancelling] = useState(false)
   const [emailSent, setEmailSent] = useState(false)
   const [showEdit, setShowEdit] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+
+  async function handleDelete() {
+    await supabase.from('passport_logs').delete().eq('passport_id', passport.id)
+    await supabase.from('passports').delete().eq('id', passport.id)
+    onUpdated?.('deleted')
+    onClose()
+  }
 
   const currentIndex = STATUS_INDEX[passport.status] ?? 0
   const isCompleted = passport.status === 'returned'
@@ -169,6 +177,18 @@ export default function PassportDetail({ passport: initialPassport, onClose, onU
           </div>
           {emailSent && <span className="text-xs font-bold text-emerald-400 bg-emerald-500/15 px-2 py-1 rounded-full animate-pulse">✉ Email sent!</span>}
           {isCancelled && <span className="text-xs font-bold text-red-400 bg-red-500/15 px-2 py-1 rounded-full">Cancelled</span>}
+          {confirmDelete ? (
+            <div className="flex items-center gap-2">
+              <button onClick={() => setConfirmDelete(false)} className="text-xs text-slate-500 px-2 py-1">Cancel</button>
+              <button onClick={handleDelete} className="flex items-center gap-1 bg-red-500/20 text-red-400 px-3 py-2 rounded-xl text-xs font-semibold">
+                <Trash2 size={13}/> Confirm Delete
+              </button>
+            </div>
+          ) : (
+            <button onClick={() => setConfirmDelete(true)} className="text-slate-600 hover:text-red-400 transition-colors p-2">
+              <Trash2 size={16}/>
+            </button>
+          )}
           <button onClick={() => setShowEdit(true)} className="flex items-center gap-1 bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-2 rounded-xl text-xs font-semibold">
             <Pencil size={13} /> Edit
           </button>
