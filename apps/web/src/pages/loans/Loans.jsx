@@ -1,8 +1,8 @@
 import PropTypes from 'prop-types'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useSupabaseQuery } from '../../hooks/useSupabaseQuery'
 import { supabase } from '../../lib/supabase'
-import { Plus, X, ChevronDown, ChevronUp, AlertTriangle, RefreshCw } from 'lucide-react'
+import { Plus, X, ChevronDown, ChevronUp, AlertTriangle, RefreshCw, Trash2 } from 'lucide-react'
 import { ListSkeleton } from '../../components/Skeleton'
 import { LOAN_STATUS_COLOR as STATUS_COLOR } from '../../lib/constants'
 
@@ -213,6 +213,14 @@ export default function Loans() {
   const [showAdd, setShowAdd] = useState(false)
   const [repaying, setRepaying] = useState(null)
   const [expanded, setExpanded] = useState(null)
+  const [confirmDelete, setConfirmDelete] = useState(null)
+
+  async function handleDelete(id) {
+    await supabase.from('loan_repayments').delete().eq('loan_id', id)
+    await supabase.from('loans').delete().eq('id', id)
+    setConfirmDelete(null)
+    refresh()
+  }
   const [repayments, setRepayments] = useState({})
   const [refreshing, setRefreshing] = useState(false)
 
@@ -328,11 +336,23 @@ export default function Loans() {
                         {isExpanded ? <ChevronUp size={13}/> : <ChevronDown size={13}/>}
                         {isExpanded ? 'Hide' : 'History'}
                       </button>
-                      {l.status !== 'repaid' && (
-                        <button onClick={() => setRepaying(l)} className="text-xs bg-emerald-500/15 text-emerald-400 px-3 py-1 rounded-full font-semibold">
-                          + Repay
-                        </button>
-                      )}
+                      <div className="flex items-center gap-2">
+                        {l.status !== 'repaid' && (
+                          <button onClick={() => setRepaying(l)} className="text-xs bg-emerald-500/15 text-emerald-400 px-3 py-1 rounded-full font-semibold">
+                            + Repay
+                          </button>
+                        )}
+                        {confirmDelete === l.id ? (
+                          <div className="flex items-center gap-1">
+                            <button onClick={() => setConfirmDelete(null)} className="text-xs text-slate-500 px-2 py-1 rounded-lg">Cancel</button>
+                            <button onClick={() => handleDelete(l.id)} className="text-xs bg-red-500/20 text-red-400 px-3 py-1 rounded-full font-semibold">Confirm</button>
+                          </div>
+                        ) : (
+                          <button onClick={() => setConfirmDelete(l.id)} className="text-slate-600 hover:text-red-400 transition-colors p-1">
+                            <Trash2 size={14}/>
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                   {isExpanded && (
