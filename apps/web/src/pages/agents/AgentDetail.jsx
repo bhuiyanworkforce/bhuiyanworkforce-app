@@ -1,13 +1,19 @@
 import PropTypes from 'prop-types'
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
-import { X, Users, Wallet, TrendingUp, FileText, Plus } from 'lucide-react'
+import { X, Users, Wallet, TrendingUp, FileText, Plus, Trash2 } from 'lucide-react'
 
 export default function AgentDetail({ agent, onClose }) {
   const [candidates, setCandidates] = useState([])
   const [invoices, setInvoices] = useState([])
   const [payouts, setPayouts] = useState([])
   const [showPayout, setShowPayout] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+
+  async function handleDelete() {
+    await supabase.from('agents').delete().eq('id', agent.id)
+    onClose()
+  }
   const [payoutAmount, setPayoutAmount] = useState('')
   const [payoutNotes, setPayoutNotes] = useState('')
   const [saving, setSaving] = useState(false)
@@ -57,6 +63,18 @@ export default function AgentDetail({ agent, onClose }) {
           <p className="text-slate-100 font-bold text-sm">{agent.full_name}</p>
           <p className="text-slate-500 text-xs">{agent.commission_rate}% commission · {agent.phone}</p>
         </div>
+        {confirmDelete ? (
+          <div className="flex items-center gap-2">
+            <button onClick={() => setConfirmDelete(false)} className="text-xs text-slate-500 px-2 py-1">Cancel</button>
+            <button onClick={handleDelete} className="flex items-center gap-1 bg-red-500/20 text-red-400 px-3 py-1.5 rounded-xl text-xs font-semibold">
+              <Trash2 size={13}/> Confirm
+            </button>
+          </div>
+        ) : (
+          <button onClick={() => setConfirmDelete(true)} className="text-slate-600 hover:text-red-400 transition-colors p-1.5">
+            <Trash2 size={16}/>
+          </button>
+        )}
       </div>
 
       <div className="p-4 flex flex-col gap-4">
