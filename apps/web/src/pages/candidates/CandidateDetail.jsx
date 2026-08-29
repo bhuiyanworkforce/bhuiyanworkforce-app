@@ -1,6 +1,7 @@
 import PropTypes from 'prop-types'
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { safeDelete } from '../../lib/utils'
 import { X, Stamp, Receipt, Phone, Globe, Calendar, Paperclip, Trash2, ChevronDown, Edit2, AlertTriangle, UploadCloud } from 'lucide-react'
 import { useDropzone } from 'react-dropzone'
 import EditCandidateModal from './EditCandidateModal'
@@ -212,11 +213,26 @@ export default function CandidateDetail({ candidate: initialCandidate, onClose }
     multiple: true,
   })
 
+  // Fix: neither step was checked. If storage removal succeeded but the
+  // database row delete failed (or vice versa), you'd end up with either
+  // an orphaned file still sitting in storage, or a database row pointing
+  // at a file that no longer exists — and the UI removed it from the list
+  // either way, so nobody would know.
   async function confirmAndDeleteDoc() {
     if (!confirmDeleteDoc) return
     setDeleting(true)
-    await supabase.storage.from('documents').remove([confirmDeleteDoc.storage_path])
-    await supabase.from('candidate_documents').delete().eq('id', confirmDeleteDoc.id)
+    const { error: storageErr } = await supabase.storage.from('documents').remove([confirmDeleteDoc.storage_path])
+    if (storageErr) {
+      alert(`Could not delete file: ${storageErr.message}`)
+      setDeleting(false)
+      return
+    }
+    const result = await safeDelete(supabase, 'candidate_documents', 'id', confirmDeleteDoc.id)
+    if (!result.ok) {
+      alert(`File was removed from storage, but the record could not be deleted: ${result.message}`)
+      setDeleting(false)
+      return
+    }
     setDocuments(prev => prev.filter(d => d.id !== confirmDeleteDoc.id))
     setConfirmDeleteDoc(null)
     setDeleting(false)

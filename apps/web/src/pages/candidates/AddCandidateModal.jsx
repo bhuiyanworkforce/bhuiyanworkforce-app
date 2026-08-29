@@ -32,6 +32,11 @@ export default function AddCandidateModal({ open, onClose, onSaved }) {
     setSaving(true)
     const { data: { session } } = await supabase.auth.getSession()
     const user = session?.user
+    if (!user) {
+      setError('Your session has expired. Please log in again.')
+      setSaving(false)
+      return
+    }
     const { error } = await supabase.from('candidates').insert({
       full_name: form.full_name, phone: form.phone,
       nationality: form.nationality, address: form.address,
