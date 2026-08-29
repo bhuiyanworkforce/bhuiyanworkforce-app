@@ -137,17 +137,29 @@ AddAgentPayrollModal.propTypes = {
 export function AgentPayrollDetail({ record, onClose, onUpdated }) {
   const [updating, setUpdating] = useState(false)
 
+  // Fix: same gap as EmployeePayrollDetail.markPaid — neither write was
+  // checked, so a failed status update looked identical to success, and a
+  // failed expense insert after a successful status update would leave
+  // payroll marked "paid" with no matching expense record.
   async function markPaid() {
     setUpdating(true)
-    await supabase.from('payroll').update({ status: 'paid', paid_at: new Date().toISOString() }).eq('id', record.id)
+    const { error: statusErr } = await supabase.from('payroll').update({ status: 'paid', paid_at: new Date().toISOString() }).eq('id', record.id)
+    if (statusErr) {
+      alert(`Could not mark as paid: ${statusErr.message}`)
+      setUpdating(false)
+      return
+    }
     const net = Number(record.net_amount || record.net_salary) || 0
-    await supabase.from('expenses').insert({
+    const { error: expenseErr } = await supabase.from('expenses').insert({
       date: new Date().toISOString().split('T')[0],
       category: 'salary',
       description: `Agent payroll — ${record.agents?.full_name || 'agent'}`,
       amount: net,
       payment_method: record.payment_method || 'cash',
     })
+    if (expenseErr) {
+      alert(`Marked as paid, but the matching expense record failed to save (${expenseErr.message}). Please add it manually in Expenses so the books stay accurate.`)
+    }
     onUpdated()
     setUpdating(false)
     onClose()

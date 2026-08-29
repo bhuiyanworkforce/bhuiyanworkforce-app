@@ -154,17 +154,30 @@ AddEmployeePayrollModal.propTypes = {
 export function EmployeePayrollDetail({ record, onClose, onUpdated }) {
   const [updating, setUpdating] = useState(false)
 
+  // Fix: neither write here was checked. If the status update silently
+  // failed, the record would still say "unpaid" with no explanation. Worse,
+  // if the status update succeeded but the expense insert failed, the
+  // payroll would show "paid" with no matching expense record — money
+  // marked as gone with no line item explaining where it went.
   async function markPaid() {
     setUpdating(true)
-    await supabase.from('employee_payroll').update({ status: 'paid', payment_date: new Date().toISOString().split('T')[0] }).eq('id', record.id)
+    const { error: statusErr } = await supabase.from('employee_payroll').update({ status: 'paid', payment_date: new Date().toISOString().split('T')[0] }).eq('id', record.id)
+    if (statusErr) {
+      alert(`Could not mark as paid: ${statusErr.message}`)
+      setUpdating(false)
+      return
+    }
     const net = Number(record.net_salary) || 0
-    await supabase.from('expenses').insert({
+    const { error: expenseErr } = await supabase.from('expenses').insert({
       date: new Date().toISOString().split('T')[0],
       category: 'salary',
       description: `Employee payroll — ${record.employees?.name || 'employee'}`,
       amount: net,
       payment_method: record.payment_method || 'cash',
     })
+    if (expenseErr) {
+      alert(`Marked as paid, but the matching expense record failed to save (${expenseErr.message}). Please add it manually in Expenses so the books stay accurate.`)
+    }
     onUpdated()
     setUpdating(false)
     onClose()
