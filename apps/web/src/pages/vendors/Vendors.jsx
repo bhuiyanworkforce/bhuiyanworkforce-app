@@ -1,6 +1,7 @@
 import PropTypes from 'prop-types'
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { safeDelete } from '../../lib/utils'
 import { Plus, Search, Building2, X, ChevronRight, AlertTriangle, RefreshCw, Trash2 } from 'lucide-react'
 import { Spinner, ListSkeleton } from '../../components/Skeleton'
 
@@ -184,8 +185,9 @@ export default function Vendors() {
   const [confirmDelete, setConfirmDelete] = useState(null)
 
   async function handleDelete(id) {
-    await supabase.from('vendors').delete().eq('id', id)
+    const result = await safeDelete(supabase, 'vendors', 'id', id)
     setConfirmDelete(null)
+    if (!result.ok) { alert(result.message); return }
     fetchVendors()
   }
 
