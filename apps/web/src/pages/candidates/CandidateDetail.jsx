@@ -50,7 +50,7 @@ export default function CandidateDetail({ candidate: initialCandidate, onClose }
   const [stageError, setStageError]       = useState('')
   const [showEdit, setShowEdit]           = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
-  const [deleting, setDeleting]           = useState(false)
+  const [deletingCandidate, setDeletingCandidate] = useState(false)
   const [deleteError, setDeleteError]     = useState('')
 
   // ── Fix: candidate delete was silently doing nothing ────────────────────
@@ -69,7 +69,7 @@ export default function CandidateDetail({ candidate: initialCandidate, onClose }
   // RLS no-op can be detected (empty data array) instead of assumed away.
   async function handleDeleteCandidate() {
     setDeleteError('')
-    setDeleting(true)
+    setDeletingCandidate(true)
     try {
       const [
         { count: passportCount },
@@ -91,7 +91,7 @@ export default function CandidateDetail({ candidate: initialCandidate, onClose }
 
       if (blockers.length) {
         setDeleteError(`Can't delete — this candidate still has ${blockers.join(', ')} attached. Remove or reassign those first.`)
-        setDeleting(false)
+        setDeletingCandidate(false)
         return
       }
 
@@ -99,18 +99,18 @@ export default function CandidateDetail({ candidate: initialCandidate, onClose }
 
       if (error) {
         setDeleteError(error.message)
-        setDeleting(false)
+        setDeletingCandidate(false)
         return
       }
       if (!data || data.length === 0) {
         setDeleteError("Delete didn't go through — your account may not have permission to delete candidates. Ask an owner/manager to do it.")
-        setDeleting(false)
+        setDeletingCandidate(false)
         return
       }
       onClose()
     } catch (err) {
       setDeleteError(err.message || 'Something went wrong deleting this candidate.')
-      setDeleting(false)
+      setDeletingCandidate(false)
     }
   }
 
@@ -402,8 +402,8 @@ export default function CandidateDetail({ candidate: initialCandidate, onClose }
             {confirmDelete ? (
               <>
                 <button onClick={() => { setConfirmDelete(false); setDeleteError('') }} className="text-xs text-slate-500 px-2 py-1">Cancel</button>
-                <button onClick={handleDeleteCandidate} disabled={deleting} className="flex items-center gap-1 bg-red-500/20 text-red-400 px-3 py-1.5 rounded-xl text-xs font-semibold disabled:opacity-50">
-                  <Trash2 size={13}/> {deleting ? 'Deleting...' : 'Confirm'}
+                <button onClick={handleDeleteCandidate} disabled={deletingCandidate} className="flex items-center gap-1 bg-red-500/20 text-red-400 px-3 py-1.5 rounded-xl text-xs font-semibold disabled:opacity-50">
+                  <Trash2 size={13}/> {deletingCandidate ? 'Deleting...' : 'Confirm'}
                 </button>
               </>
             ) : (
