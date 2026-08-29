@@ -76,11 +76,13 @@ export default function CandidateDetail({ candidate: initialCandidate, onClose }
         { count: visaCount },
         { count: invoiceCount },
         { count: docCount },
+        { count: refundCount },
       ] = await Promise.all([
         supabase.from('passports').select('id', { count: 'exact', head: true }).eq('candidate_id', candidate.id),
         supabase.from('visa_applications').select('id', { count: 'exact', head: true }).eq('candidate_id', candidate.id),
         supabase.from('invoices').select('id', { count: 'exact', head: true }).eq('candidate_id', candidate.id),
         supabase.from('candidate_documents').select('id', { count: 'exact', head: true }).eq('candidate_id', candidate.id),
+        supabase.from('refunds').select('id', { count: 'exact', head: true }).eq('candidate_id', candidate.id),
       ])
 
       const blockers = []
@@ -88,6 +90,7 @@ export default function CandidateDetail({ candidate: initialCandidate, onClose }
       if (visaCount) blockers.push(`${visaCount} visa application${visaCount !== 1 ? 's' : ''}`)
       if (invoiceCount) blockers.push(`${invoiceCount} invoice${invoiceCount !== 1 ? 's' : ''}`)
       if (docCount) blockers.push(`${docCount} document${docCount !== 1 ? 's' : ''}`)
+      if (refundCount) blockers.push(`${refundCount} refund${refundCount !== 1 ? 's' : ''}`)
 
       if (blockers.length) {
         setDeleteError(`Can't delete — this candidate still has ${blockers.join(', ')} attached. Remove or reassign those first.`)
@@ -98,7 +101,19 @@ export default function CandidateDetail({ candidate: initialCandidate, onClose }
       const { data, error } = await supabase.from('candidates').delete().eq('id', candidate.id).select()
 
       if (error) {
-        setDeleteError(error.message)
+        // Fallback for any dependent table we didn't think to pre-check
+        // above (this is how "refunds" slipped through the first time).
+        // Postgres foreign-key violations (code 23503) always say
+        // '... on table "X"' naming the table that's still pointing at
+        // this candidate — pull that out instead of showing the raw
+        // database error.
+        if (error.code === '23503') {
+          const match = error.message.match(/on table "([^"]+)"/)
+          const blockingTable = match ? match[1].replace(/_/g, ' ') : 'another record'
+          setDeleteError(`Can't delete — this candidate still has ${blockingTable} attached. Remove those first.`)
+        } else {
+          setDeleteError(error.message)
+        }
         setDeletingCandidate(false)
         return
       }
