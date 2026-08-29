@@ -197,11 +197,16 @@ export default function InvoiceDetail({ invoice: initialInvoice, onClose, onUpda
   async function cancelInvoice() {
     if (!cancelReason.trim()) return alert('Please enter a reason')
     setSaving(true)
-    await supabase.from('invoices').update({
+    const { error } = await supabase.from('invoices').update({
       status: 'cancelled',
       cancel_reason: cancelReason,
       cancelled_at: new Date().toISOString()
     }).eq('id', invoice.id)
+    if (error) {
+      alert(`Could not cancel invoice: ${error.message}`)
+      setSaving(false)
+      return
+    }
     setInvoice(prev => ({ ...prev, status: 'cancelled', cancel_reason: cancelReason }))
     setShowCancel(false)
     setSaving(false)
