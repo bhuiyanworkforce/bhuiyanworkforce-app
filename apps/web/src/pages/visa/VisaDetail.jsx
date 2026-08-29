@@ -1,6 +1,7 @@
 import PropTypes from 'prop-types'
 import { useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { safeDelete } from '../../lib/utils'
 import { X, CheckCircle, Circle, Clock, AlertCircle, Edit2, Save, Trash2 } from 'lucide-react'
 
 const WORKFLOW = [
@@ -58,7 +59,8 @@ export default function VisaDetail({ visa: initialVisa, onClose, onUpdated }) {
   const [confirmDelete, setConfirmDelete] = useState(false)
 
   async function handleDelete() {
-    await supabase.from('visa_applications').delete().eq('id', visa.id)
+    const result = await safeDelete(supabase, 'visa_applications', 'id', visa.id)
+    if (!result.ok) { alert(result.message); return }
     onUpdated()
     onClose()
   }
@@ -71,7 +73,12 @@ export default function VisaDetail({ visa: initialVisa, onClose, onUpdated }) {
     const nextStatus = WORKFLOW[currentIndex + 1]?.key
     if (!nextStatus) return
     setAdvancing(true)
-    await supabase.from('visa_applications').update({ status: nextStatus }).eq('id', visa.id)
+    const { error } = await supabase.from('visa_applications').update({ status: nextStatus }).eq('id', visa.id)
+    if (error) {
+      alert(`Could not advance status: ${error.message}`)
+      setAdvancing(false)
+      return
+    }
     setVisa(v => ({ ...v, status: nextStatus }))
     onUpdated(nextStatus)
     setAdvancing(false)
@@ -79,7 +86,12 @@ export default function VisaDetail({ visa: initialVisa, onClose, onUpdated }) {
 
   async function setStatus(status) {
     setAdvancing(true)
-    await supabase.from('visa_applications').update({ status }).eq('id', visa.id)
+    const { error } = await supabase.from('visa_applications').update({ status }).eq('id', visa.id)
+    if (error) {
+      alert(`Could not update status: ${error.message}`)
+      setAdvancing(false)
+      return
+    }
     setVisa(v => ({ ...v, status }))
     onUpdated(status)
     setAdvancing(false)
