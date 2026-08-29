@@ -44,12 +44,33 @@ function parseMRZ(text) {
     fullName = given ? `${given} ${surname}` : surname
   }
 
-  function mrzDate(dateRaw) {
+  // Fix: date_of_birth and expiry_date need DIFFERENT century rules — they
+  // were sharing one function with a hardcoded "yy > 30" cutoff meant only
+  // for birth years. Applied to an expiry date, any passport expiring 2031
+  // or later (yy >= 31) was silently rewritten into the 1930s. Since most
+  // passports issued today carry 10-year validity, this was corrupting a
+  // large share of scanned expiry dates right now, not just in the future.
+  function mrzBirthDate(dateRaw) {
     if (!dateRaw || dateRaw.length < 6) return ''
     const yy = Number.parseInt(dateRaw.slice(0, 2), 10)
     const mm = dateRaw.slice(2, 4)
     const dd = dateRaw.slice(4, 6)
-    const year = yy > 30 ? 1900 + yy : 2000 + yy
+    // A birth date can never be in the future, so pivot dynamically off
+    // the current year instead of a fixed "30" that will itself go stale.
+    const currentYY = new Date().getFullYear() % 100
+    const year = yy > currentYY ? 1900 + yy : 2000 + yy
+    return `${year}-${mm}-${dd}`
+  }
+
+  function mrzExpiryDate(dateRaw) {
+    if (!dateRaw || dateRaw.length < 6) return ''
+    const yy = Number.parseInt(dateRaw.slice(0, 2), 10)
+    const mm = dateRaw.slice(2, 4)
+    const dd = dateRaw.slice(4, 6)
+    // Expiry dates are never in the 1900s — this MRZ format has only been
+    // in use since the 1980s/90s, so every two-digit expiry year belongs
+    // in the 2000s. This is safe until 2099.
+    const year = 2000 + yy
     return `${year}-${mm}-${dd}`
   }
 
@@ -58,8 +79,8 @@ function parseMRZ(text) {
   return {
     passport_no: passportNo,
     full_name: fullName || null,
-    date_of_birth: mrzDate(dobRaw),
-    expiry_date: mrzDate(expiryRaw),
+    date_of_birth: mrzBirthDate(dobRaw),
+    expiry_date: mrzExpiryDate(expiryRaw),
     nationality: nationality || null,
   }
 }
