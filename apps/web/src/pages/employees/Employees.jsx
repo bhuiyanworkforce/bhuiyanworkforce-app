@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../../lib/supabase'
+import { safeDelete } from '../../lib/utils'
 import { Plus, X, Users, ChevronRight, ToggleLeft, ToggleRight, RefreshCw, AlertCircle, Trash2 } from 'lucide-react'
 import { EMPLOYEE_ROLES as ROLES } from '../../lib/constants'
 import { Spinner, ListSkeleton } from '../../components/Skeleton'
@@ -87,9 +88,19 @@ function EmployeeDetail({ employee: initial, onClose, onUpdated }) {
   const [toggleError, setToggleError] = useState('')
   const [confirmDelete, setConfirmDelete] = useState(false)
 
+  // Fix: same two-step delete pattern as Loans.jsx — deleting payroll
+  // history then the employee, neither checked. If payroll history
+  // failed to delete (RLS, etc.), the employee delete would then hit an
+  // unreported foreign-key violation and the employee would silently
+  // remain, looking deleted to the user.
   async function handleDelete() {
-    await supabase.from('employee_payroll').delete().eq('employee_id', employee.id)
-    await supabase.from('employees').delete().eq('id', employee.id)
+    const payrollResult = await safeDelete(supabase, 'employee_payroll', 'employee_id', employee.id)
+    if (!payrollResult.ok) {
+      alert(`Could not remove payroll history: ${payrollResult.message}`)
+      return
+    }
+    const empResult = await safeDelete(supabase, 'employees', 'id', employee.id)
+    if (!empResult.ok) { alert(empResult.message); return }
     onUpdated()
     onClose()
   }
