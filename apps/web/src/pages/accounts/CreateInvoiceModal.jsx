@@ -61,6 +61,14 @@ export default function CreateInvoiceModal({ onClose, onSaved }) {
     setSaving(true)
     const { data: { session } } = await supabase.auth.getSession()
     const user = session?.user
+    // Fix: session can be gone by the time this fires (tab left open past
+    // token expiry). Without this check, `user.id` below throws a raw
+    // TypeError instead of telling the person to log back in.
+    if (!user) {
+      setError('Your session has expired. Please log in again.')
+      setSaving(false)
+      return
+    }
     // Use a UUID fragment instead of Date.now() so that two invoices
     // created in the same millisecond (e.g. two browser tabs) never
     // generate the same invoice_no.
@@ -84,7 +92,13 @@ export default function CreateInvoiceModal({ onClose, onSaved }) {
 
     if (invErr) { setError(invErr.message); setSaving(false); return }
 
-    await supabase.from('invoice_items').insert(
+    // Fix: this insert's result was never checked. If it failed (RLS hiccup,
+    // bad value, network blip), the invoice header still saved with a total
+    // and zero line items, and the UI reported success anyway — a paper
+    // invoice with a number and no breakdown. Now we check the error and,
+    // if the items didn't save, delete the orphaned header so we don't
+    // leave a broken invoice behind, and tell the person what happened.
+    const { error: itemsErr } = await supabase.from('invoice_items').insert(
       items.map(item => ({
         invoice_id: invoice.id,
         description: item.description,
@@ -93,6 +107,14 @@ export default function CreateInvoiceModal({ onClose, onSaved }) {
         total: Number.parseFloat(item.quantity) * Number.parseFloat(item.unit_price),
       }))
     )
+
+    if (itemsErr) {
+      await supabase.from('invoices').delete().eq('id', invoice.id)
+      setError(`Could not save invoice line items (${itemsErr.message}). Nothing was created — please try again.`)
+      setSaving(false)
+      return
+    }
+
     setSaving(false)
     onSaved()
   }

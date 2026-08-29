@@ -13,11 +13,26 @@ const STATUS_COLOR = {
   cancelled: 'bg-slate-500/15 text-slate-400',
 }
 
+// Fix: item.description, invoice.notes, and other free-text fields were
+// being dropped straight into an HTML string for the print window with no
+// escaping — any "<" or "&" in a description would be interpreted as
+// markup instead of shown as text (and it's the kind of gap that turns
+// serious the moment this text ever comes from a less-trusted source, like
+// OCR extraction). Escape everything before it goes into the template.
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;')
+}
+
 function buildItemRows(items) {
   return items.map(item => {
     const unitPrice = (Number.parseFloat(item.unit_price) || 0).toLocaleString()
     const total = (Number.parseFloat(item.total) || 0).toLocaleString()
-    return `<tr><td>${item.description}</td><td>${item.quantity}</td><td>৳${unitPrice}</td><td>৳${total}</td></tr>`
+    return `<tr><td>${escapeHtml(item.description)}</td><td>${escapeHtml(item.quantity)}</td><td>৳${unitPrice}</td><td>৳${total}</td></tr>`
   }).join('')
 }
 
@@ -57,6 +72,19 @@ export default function InvoiceDetail({ invoice: initialInvoice, onClose, onUpda
   const totalPaid = payments.reduce((s, p) => s + (Number.parseFloat(p.amount) || 0), 0)
   const remaining = (Number.parseFloat(invoice.total) || 0) - totalPaid
 
+  // Fix: this previously computed "remaining" and the new status entirely
+  // from state fetched once when the modal opened, then wrote that status
+  // back with a separate client-side update. Two staff recording payments
+  // on the same invoice within a few seconds of each other could both read
+  // the same stale "remaining," both pass the client-side overpayment
+  // check, and both write a status computed from the same stale total —
+  // an invoice could end up overpaid or stuck on "partial" after being
+  // fully paid. That's now enforced atomically by a database trigger
+  // (see migration 20260830000001_invoice_payment_integrity.sql) which
+  // locks the invoice row, recomputes status from the real sum of
+  // payments, and rejects the insert outright if it would overpay. This
+  // function now just submits the payment and re-reads the authoritative
+  // result instead of computing it locally.
   async function recordPayment() {
     const amount = Number.parseFloat(payForm.amount)
     if (!amount || amount <= 0) return alert('Enter a valid amount')
@@ -64,6 +92,11 @@ export default function InvoiceDetail({ invoice: initialInvoice, onClose, onUpda
     setPaying(true)
     const { data: { session } } = await supabase.auth.getSession()
     const user = session?.user
+    if (!user) {
+      alert('Your session has expired. Please log in again.')
+      setPaying(false)
+      return
+    }
     const { data: pay, error } = await supabase.from('payments').insert({
       invoice_id: invoice.id,
       amount,
@@ -71,11 +104,25 @@ export default function InvoiceDetail({ invoice: initialInvoice, onClose, onUpda
       notes: payForm.notes || null,
       received_by: user.id,
     }).select('receipt_no').single()
+    // A DB-level overpayment rejection (or any other insert failure)
+    // surfaces here as `error` — nothing has been written.
     if (error) { alert(error.message); setPaying(false); return }
 
-    const newTotalPaid = totalPaid + amount
-    const newStatus = newTotalPaid >= (Number.parseFloat(invoice.total) || 0) - 0.01 ? 'paid' : 'partial'
-    await supabase.from('invoices').update({ status: newStatus, receipt_no: pay?.receipt_no || null }).eq('id', invoice.id)
+    // The trigger has already recalculated and written invoices.status —
+    // re-fetch it so the UI reflects the real, server-computed state
+    // rather than a value we guessed on the client.
+    const { data: freshInvoice, error: fetchErr } = await supabase
+      .from('invoices')
+      .select('status, receipt_no')
+      .eq('id', invoice.id)
+      .single()
+
+    const newStatus = fetchErr ? null : freshInvoice.status
+    const receiptNo = pay?.receipt_no || freshInvoice?.receipt_no || null
+
+    if (!fetchErr && receiptNo && receiptNo !== invoice.receipt_no) {
+      await supabase.from('invoices').update({ receipt_no: receiptNo }).eq('id', invoice.id)
+    }
 
     const remainingAfter = remaining - amount
     const partialMsg = newStatus === 'partial' ? `, ৳${remainingAfter.toLocaleString()} remaining` : ''
@@ -87,19 +134,32 @@ export default function InvoiceDetail({ invoice: initialInvoice, onClose, onUpda
       is_read: false,
     })
 
-    setPayments(prev => [{ ...payForm, amount, receipt_no: pay?.receipt_no, created_at: new Date().toISOString() }, ...prev])
-    setInvoice(prev => ({ ...prev, status: newStatus, receipt_no: pay?.receipt_no || prev.receipt_no }))
+    setPayments(prev => [{ ...payForm, amount, receipt_no: receiptNo, created_at: new Date().toISOString() }, ...prev])
+    setInvoice(prev => ({ ...prev, status: newStatus || prev.status, receipt_no: receiptNo || prev.receipt_no }))
     setShowPayment(false)
     setPayForm({ amount: '', method: 'cash', notes: '' })
     setPaying(false)
-    onUpdated(newStatus, pay?.receipt_no)
+    onUpdated(newStatus || invoice.status, receiptNo)
   }
 
+  // Fix: three problems here.
+  //   1. The item delete/insert calls weren't checked for errors, so a
+  //      failed insert after a successful delete could leave an invoice
+  //      with its old total but zero line items.
+  //   2. The invoice's `status` was never recalculated after the total
+  //      changed. Editing a partially- or fully-paid invoice's items left
+  //      the old status in place even if the new total no longer matched
+  //      what had actually been paid.
+  //   3. On any failure it just alert()'d and stopped, sometimes with the
+  //      delete already applied — leaving items in a half-updated state.
   async function saveEdit() {
     setSaving(true)
     const { error } = await supabase.from('invoices').update(editForm).eq('id', invoice.id)
     if (error) { alert(error.message); setSaving(false); return }
-    await supabase.from('invoice_items').delete().eq('invoice_id', invoice.id)
+
+    const { error: delErr } = await supabase.from('invoice_items').delete().eq('invoice_id', invoice.id)
+    if (delErr) { alert(`Could not update line items (${delErr.message}). The invoice's other fields were saved, but items were left unchanged.`); setSaving(false); return }
+
     const newItems = editItems.filter(i => i.description && i.quantity && i.unit_price).map(i => ({
       invoice_id: invoice.id,
       description: i.description,
@@ -107,13 +167,31 @@ export default function InvoiceDetail({ invoice: initialInvoice, onClose, onUpda
       unit_price: Number.parseFloat(i.unit_price),
       total: Number.parseFloat(i.quantity) * Number.parseFloat(i.unit_price)
     }))
-    if (newItems.length) await supabase.from('invoice_items').insert(newItems)
+
+    if (newItems.length) {
+      const { error: insErr } = await supabase.from('invoice_items').insert(newItems)
+      if (insErr) { alert(`Could not save the new line items (${insErr.message}). This invoice currently has NO items — please reopen and re-enter them.`); setSaving(false); return }
+    }
+
     const newTotal = newItems.reduce((s, i) => s + i.total, 0)
-    await supabase.from('invoices').update({ total: newTotal, subtotal: newTotal }).eq('id', invoice.id)
+    // Recompute status against what's actually been paid so far, instead
+    // of leaving a stale status from before the edit.
+    const newStatus =
+      invoice.status === 'cancelled' ? 'cancelled' :
+      totalPaid <= 0.01 ? 'unpaid' :
+      totalPaid >= newTotal - 0.01 ? 'paid' : 'partial'
+
+    const { error: totalErr } = await supabase
+      .from('invoices')
+      .update({ total: newTotal, subtotal: newTotal, status: newStatus })
+      .eq('id', invoice.id)
+    if (totalErr) { alert(totalErr.message); setSaving(false); return }
+
     setItems(newItems)
-    setInvoice(prev => ({ ...prev, ...editForm, total: newTotal }))
+    setInvoice(prev => ({ ...prev, ...editForm, total: newTotal, status: newStatus }))
     setShowEdit(false)
     setSaving(false)
+    onUpdated(newStatus)
   }
 
   async function cancelInvoice() {
@@ -134,10 +212,10 @@ export default function InvoiceDetail({ invoice: initialInvoice, onClose, onUpda
     const paidBg = invoice.status === 'paid' ? '#d1fae5' : '#fee2e2'
     const paidColor = invoice.status === 'paid' ? '#065f46' : '#991b1b'
     const dueLine = invoice.due_date ? `<p>Due: ${new Date(invoice.due_date).toLocaleDateString()}</p>` : ''
-    const notesLine = invoice.notes ? `<p style="color:#666;font-size:13px;margin-bottom:20px;">Notes: ${invoice.notes}</p>` : ''
+    const notesLine = invoice.notes ? `<p style="color:#666;font-size:13px;margin-bottom:20px;">Notes: ${escapeHtml(invoice.notes)}</p>` : ''
     const itemRows = buildItemRows(items)
 
-    return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Invoice ${invoice.invoice_no}</title>
+    return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Invoice ${escapeHtml(invoice.invoice_no)}</title>
       <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;padding:40px;color:#1a1a2e}
       .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:40px;border-bottom:3px solid #6366f1;padding-bottom:20px}
       .company h1{font-size:24px;color:#6366f1;font-weight:900}.company p{color:#666;font-size:13px;margin-top:4px}
@@ -154,9 +232,9 @@ export default function InvoiceDetail({ invoice: initialInvoice, onClose, onUpda
       background:${paidBg};color:${paidColor}}
       </style></head><body>
       <div class="header"><div class="company"><h1>Bhuiyan Books</h1><p>Bhuiyan Workforce Ltd.</p><p>bhuiyanworkforce.com</p></div>
-      <div class="invoice-info"><h2>${invoice.invoice_no}</h2><p>Date: ${new Date(invoice.issued_at).toLocaleDateString()}</p>
-      ${dueLine}<br/><span class="status">${invoice.status}</span></div></div>
-      <div class="candidate"><h3>Bill To</h3><p>${invoice.candidates?.full_name || 'N/A'}</p></div>
+      <div class="invoice-info"><h2>${escapeHtml(invoice.invoice_no)}</h2><p>Date: ${new Date(invoice.issued_at).toLocaleDateString()}</p>
+      ${dueLine}<br/><span class="status">${escapeHtml(invoice.status)}</span></div></div>
+      <div class="candidate"><h3>Bill To</h3><p>${escapeHtml(invoice.candidates?.full_name) || 'N/A'}</p></div>
       <table><thead><tr><th>Description</th><th>Qty</th><th>Unit Price</th><th>Total</th></tr></thead><tbody>
       ${itemRows}
       <tr class="total-row"><td colspan="3">Total Amount</td><td>৳${(Number.parseFloat(invoice.total)||0).toLocaleString()}</td></tr>
