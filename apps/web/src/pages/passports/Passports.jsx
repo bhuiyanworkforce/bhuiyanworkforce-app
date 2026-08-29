@@ -148,7 +148,12 @@ export default function Passports() {
   async function applyBulkUpdate() {
     if (!bulkStatus || bulkSelected.length === 0) return
     setBulkUpdating(true)
-    await supabase.from('passports').update({ status: bulkStatus }).in('id', bulkSelected)
+    const { error } = await supabase.from('passports').update({ status: bulkStatus }).in('id', bulkSelected)
+    if (error) {
+      alert(`Bulk update failed: ${error.message}`)
+      setBulkUpdating(false)
+      return
+    }
     setPassports(prev => prev.map(p => bulkSelected.includes(p.id) ? { ...p, status: bulkStatus } : p))
     setBulkUpdating(false)
     exitBulkMode()

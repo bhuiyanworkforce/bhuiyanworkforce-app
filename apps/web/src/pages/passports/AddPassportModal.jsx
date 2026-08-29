@@ -43,6 +43,11 @@ export default function AddPassportModal({ open, onClose, onSaved }) {
     setSaving(true)
     const { data: { session } } = await supabase.auth.getSession()
     const user = session?.user
+    if (!user) {
+      setError('Your session has expired. Please log in again.')
+      setSaving(false)
+      return
+    }
     const { error: err } = await supabase.from('passports').insert({
       candidate_id: form.candidate_id,
       passport_no: form.passport_no.trim().toUpperCase(),

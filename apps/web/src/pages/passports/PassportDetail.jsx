@@ -1,6 +1,7 @@
 import PropTypes from 'prop-types'
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { safeDelete } from '../../lib/utils'
 import EditPassportModal from './EditPassportModal'
 import { X, ChevronRight, CheckCircle, Circle, Clock, AlertCircle, Pencil, Trash2 } from 'lucide-react'
 import { Spinner } from '../../components/Skeleton'
@@ -60,8 +61,13 @@ export default function PassportDetail({ passport: initialPassport, onClose, onU
   const [confirmDelete, setConfirmDelete] = useState(false)
 
   async function handleDelete() {
-    await supabase.from('passport_logs').delete().eq('passport_id', passport.id)
-    await supabase.from('passports').delete().eq('id', passport.id)
+    const logsResult = await safeDelete(supabase, 'passport_logs', 'passport_id', passport.id)
+    if (!logsResult.ok) {
+      alert(`Could not remove passport logs: ${logsResult.message}`)
+      return
+    }
+    const passportResult = await safeDelete(supabase, 'passports', 'id', passport.id)
+    if (!passportResult.ok) { alert(passportResult.message); return }
     onUpdated?.('deleted')
     onClose()
   }
@@ -145,11 +151,29 @@ export default function PassportDetail({ passport: initialPassport, onClose, onU
     setCancelling(true)
     const { data: { session } } = await supabase.auth.getSession()
     const user = session?.user
-    await supabase.from('passport_workflow_logs').insert({
+    if (!user) {
+      alert('Your session has expired. Please log in again.')
+      setCancelling(false)
+      return
+    }
+    // Fix: neither of these writes was checked. A failed log insert or a
+    // failed status update would leave the UI showing "cancelled" (set
+    // optimistically below) even if the database never actually recorded it.
+    const { error: logErr } = await supabase.from('passport_workflow_logs').insert({
       passport_id: passport.id, from_status: passport.status,
       to_status: 'cancelled', note: note || 'Cancelled', changed_by: user.id,
     })
-    await supabase.from('passports').update({ status: 'cancelled' }).eq('id', passport.id)
+    if (logErr) {
+      alert(`Could not cancel: ${logErr.message}`)
+      setCancelling(false)
+      return
+    }
+    const { error: statusErr } = await supabase.from('passports').update({ status: 'cancelled' }).eq('id', passport.id)
+    if (statusErr) {
+      alert(`Could not cancel: ${statusErr.message}`)
+      setCancelling(false)
+      return
+    }
     setCancelling(false)
     setPassport(prev => ({ ...prev, status: 'cancelled' }))
     onUpdated('cancelled')
