@@ -5,6 +5,7 @@ import { supabase } from '../../lib/supabase'
 import { Plus, X, ChevronDown, ChevronUp, AlertTriangle, RefreshCw, Trash2 } from 'lucide-react'
 import { ListSkeleton } from '../../components/Skeleton'
 import { LOAN_STATUS_COLOR as STATUS_COLOR } from '../../lib/constants'
+import { safeDelete } from '../../lib/utils'
 
 // STATUS_COLOR is now imported from ../../lib/constants
 
@@ -215,10 +216,23 @@ export default function Loans() {
   const [expanded, setExpanded] = useState(null)
   const [confirmDelete, setConfirmDelete] = useState(null)
 
+  // Fix: neither delete here was checked. Deleting repayment history and
+  // then the loan is a two-step operation — if the first step silently
+  // failed (RLS or otherwise), the second would then fail with a foreign
+  // key violation that was also never surfaced, leaving the loan
+  // untouched with no explanation.
   async function handleDelete(id) {
-    await supabase.from('loan_repayments').delete().eq('loan_id', id)
-    await supabase.from('loans').delete().eq('id', id)
+    const repayResult = await safeDelete(supabase, 'loan_repayments', 'loan_id', id)
+    if (!repayResult.ok) {
+      alert(`Could not remove repayment history: ${repayResult.message}`)
+      return
+    }
+    const loanResult = await safeDelete(supabase, 'loans', 'id', id)
     setConfirmDelete(null)
+    if (!loanResult.ok) {
+      alert(loanResult.message)
+      return
+    }
     refresh()
   }
   const [repayments, setRepayments] = useState({})
