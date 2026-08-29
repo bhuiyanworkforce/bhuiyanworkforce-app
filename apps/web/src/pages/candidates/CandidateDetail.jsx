@@ -50,10 +50,68 @@ export default function CandidateDetail({ candidate: initialCandidate, onClose }
   const [stageError, setStageError]       = useState('')
   const [showEdit, setShowEdit]           = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [deleting, setDeleting]           = useState(false)
+  const [deleteError, setDeleteError]     = useState('')
 
+  // ── Fix: candidate delete was silently doing nothing ────────────────────
+  // The old version never checked the result of the delete call, so two
+  // real-world failure cases were invisible to the user — the modal just
+  // closed as if it worked:
+  //   1. Foreign-key blockers: this candidate still has passports, visa
+  //      applications, invoices, or documents pointing at it, and the
+  //      database refuses to delete a row with dependents.
+  //   2. RLS permission block: when a role without delete rights on
+  //      `candidates` (e.g. an agent account) runs this delete, Postgres/
+  //      PostgREST does NOT return an error — it just matches zero rows.
+  //      An unchecked `.delete()` looks identical to a successful delete.
+  // Fix: check for dependents up front with a clear message, and force
+  // PostgREST to return the deleted row via `.select()` so a silent
+  // RLS no-op can be detected (empty data array) instead of assumed away.
   async function handleDeleteCandidate() {
-    await supabase.from('candidates').delete().eq('id', candidate.id)
-    onClose()
+    setDeleteError('')
+    setDeleting(true)
+    try {
+      const [
+        { count: passportCount },
+        { count: visaCount },
+        { count: invoiceCount },
+        { count: docCount },
+      ] = await Promise.all([
+        supabase.from('passports').select('id', { count: 'exact', head: true }).eq('candidate_id', candidate.id),
+        supabase.from('visa_applications').select('id', { count: 'exact', head: true }).eq('candidate_id', candidate.id),
+        supabase.from('invoices').select('id', { count: 'exact', head: true }).eq('candidate_id', candidate.id),
+        supabase.from('candidate_documents').select('id', { count: 'exact', head: true }).eq('candidate_id', candidate.id),
+      ])
+
+      const blockers = []
+      if (passportCount) blockers.push(`${passportCount} passport record${passportCount !== 1 ? 's' : ''}`)
+      if (visaCount) blockers.push(`${visaCount} visa application${visaCount !== 1 ? 's' : ''}`)
+      if (invoiceCount) blockers.push(`${invoiceCount} invoice${invoiceCount !== 1 ? 's' : ''}`)
+      if (docCount) blockers.push(`${docCount} document${docCount !== 1 ? 's' : ''}`)
+
+      if (blockers.length) {
+        setDeleteError(`Can't delete — this candidate still has ${blockers.join(', ')} attached. Remove or reassign those first.`)
+        setDeleting(false)
+        return
+      }
+
+      const { data, error } = await supabase.from('candidates').delete().eq('id', candidate.id).select()
+
+      if (error) {
+        setDeleteError(error.message)
+        setDeleting(false)
+        return
+      }
+      if (!data || data.length === 0) {
+        setDeleteError("Delete didn't go through — your account may not have permission to delete candidates. Ask an owner/manager to do it.")
+        setDeleting(false)
+        return
+      }
+      onClose()
+    } catch (err) {
+      setDeleteError(err.message || 'Something went wrong deleting this candidate.')
+      setDeleting(false)
+    }
   }
 
   // ── Improvement F ──────────────────────────────────────────────────────────
@@ -343,9 +401,9 @@ export default function CandidateDetail({ candidate: initialCandidate, onClose }
           <div className="flex items-center gap-2 flex-none">
             {confirmDelete ? (
               <>
-                <button onClick={() => setConfirmDelete(false)} className="text-xs text-slate-500 px-2 py-1">Cancel</button>
-                <button onClick={handleDeleteCandidate} className="flex items-center gap-1 bg-red-500/20 text-red-400 px-3 py-1.5 rounded-xl text-xs font-semibold">
-                  <Trash2 size={13}/> Confirm
+                <button onClick={() => { setConfirmDelete(false); setDeleteError('') }} className="text-xs text-slate-500 px-2 py-1">Cancel</button>
+                <button onClick={handleDeleteCandidate} disabled={deleting} className="flex items-center gap-1 bg-red-500/20 text-red-400 px-3 py-1.5 rounded-xl text-xs font-semibold disabled:opacity-50">
+                  <Trash2 size={13}/> {deleting ? 'Deleting...' : 'Confirm'}
                 </button>
               </>
             ) : (
@@ -362,6 +420,11 @@ export default function CandidateDetail({ candidate: initialCandidate, onClose }
         </div>
 
         <div className="overflow-y-auto flex-1 px-4 py-5 flex flex-col gap-4">
+          {deleteError && (
+            <div className="bg-red-500/10 border border-red-500/30 text-red-400 text-xs rounded-xl px-4 py-3">
+              {deleteError}
+            </div>
+          )}
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col gap-2">
             <div className="flex items-start justify-between mb-1">
               <div className="w-14 h-14 rounded-2xl bg-emerald-500/15 flex items-center justify-center text-emerald-400 font-bold text-2xl">
