@@ -32,16 +32,23 @@ export function AddAgentPayrollModal({ onClose, onSaved }) {
       .then(({ data }) => setAgents(data || []))
   }, [])
 
+  // Fix: period_end was treated as optional here (no validation, sent as
+  // `form.period_end || null`), but the `payroll` table has a NOT NULL
+  // constraint on that column. Every submission with it left blank failed
+  // with a raw database error instead of a clear message asking for it.
   async function handleSave() {
-    if (!form.agent_id || !form.period_start || !form.base_amount) {
-      setError('Agent, period start and base amount are required'); return
+    if (!form.agent_id || !form.period_start || !form.period_end || !form.base_amount) {
+      setError('Agent, period start, period end, and base amount are required'); return
+    }
+    if (form.period_end < form.period_start) {
+      setError('Period end cannot be before period start'); return
     }
     setSaving(true)
     const net_amount = calcAgentNet(form)
     const { error: err } = await supabase.from('payroll').insert({
       agent_id: form.agent_id,
       period_start: form.period_start,
-      period_end: form.period_end || null,
+      period_end: form.period_end,
       base_amount:       Number(form.base_amount)       || 0,
       commission_amount: Number(form.commission_amount) || 0,
       allowance:         Number(form.allowance)         || 0,
@@ -84,8 +91,8 @@ export function AddAgentPayrollModal({ onClose, onSaved }) {
                 className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500"/>
             </label>
             <label className="flex flex-col gap-1">
-              <span className="text-xs text-slate-500 font-semibold">Period End</span>
-              <input type="date" value={form.period_end} onChange={e => set('period_end', e.target.value)}
+              <span className="text-xs text-slate-500 font-semibold">Period End *</span>
+              <input type="date" required value={form.period_end} onChange={e => set('period_end', e.target.value)}
                 className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500"/>
             </label>
           </div>
