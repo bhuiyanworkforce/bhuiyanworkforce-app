@@ -8,6 +8,7 @@ import {
 import SmartPassportUpload from '../passports/SmartPassportUpload'
 import CandidateDetail from '../candidates/CandidateDetail'
 import { stageColor, stageLabel } from '../candidates/Candidates'
+import { safeDelete } from '../../lib/utils'
 
 export default function JobCategories() {
   const { profile } = useAuth()
@@ -26,9 +27,17 @@ export default function JobCategories() {
   const [unassignedCount, setUnassignedCount] = useState(0)
   const [confirmDelete, setConfirmDelete] = useState(null)
 
+  // Fix: this deletes a candidate from a second, separate screen than
+  // CandidateDetail.jsx — it had the exact same unchecked-delete bug
+  // (RLS blocks and foreign-key blocks both failed silently). Now uses
+  // the shared safeDelete helper so both delete paths behave the same way.
   async function handleDeleteCandidate(id) {
-    await supabase.from('candidates').delete().eq('id', id)
+    const result = await safeDelete(supabase, 'candidates', 'id', id)
     setConfirmDelete(null)
+    if (!result.ok) {
+      alert(result.message)
+      return
+    }
     fetchCategories()
     if (selected) fetchCandidates(selected.id, search)
   }
