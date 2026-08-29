@@ -1,6 +1,7 @@
 import PropTypes from 'prop-types'
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { safeDelete } from '../../lib/utils'
 import { X, Users, Wallet, TrendingUp, FileText, Plus, Trash2 } from 'lucide-react'
 
 export default function AgentDetail({ agent, onClose }) {
@@ -11,7 +12,8 @@ export default function AgentDetail({ agent, onClose }) {
   const [confirmDelete, setConfirmDelete] = useState(false)
 
   async function handleDelete() {
-    await supabase.from('agents').delete().eq('id', agent.id)
+    const result = await safeDelete(supabase, 'agents', 'id', agent.id)
+    if (!result.ok) { alert(result.message); return }
     onClose()
   }
   const [payoutAmount, setPayoutAmount] = useState('')
@@ -36,12 +38,25 @@ export default function AgentDetail({ agent, onClose }) {
     setSaving(true)
     const { data: { session } } = await supabase.auth.getSession()
     const user = session?.user
-    await supabase.from('agent_payouts').insert({
+    if (!user) {
+      alert('Your session has expired. Please log in again.')
+      setSaving(false)
+      return
+    }
+    // Fix: this insert's result was never checked — a failed payout
+    // record (RLS hiccup, network blip) would close the panel as if the
+    // payout had been recorded, with no financial trail actually saved.
+    const { error } = await supabase.from('agent_payouts').insert({
       agent_id: agent.id,
       amount: Number.parseFloat(payoutAmount),
       notes: payoutNotes || null,
       paid_by: user.id,
     })
+    if (error) {
+      alert(`Payout was not saved: ${error.message}`)
+      setSaving(false)
+      return
+    }
     setPayoutAmount('')
     setPayoutNotes('')
     setShowPayout(false)
