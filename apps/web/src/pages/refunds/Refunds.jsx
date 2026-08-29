@@ -49,14 +49,21 @@ function AddRefundModal({ onClose, onSaved }) {
       invoice_id: form.invoice_id || null,
     })
     if (err) { setError(err.message); setLoading(false); return }
+    // Fix: the refund above is already saved successfully by this point —
+    // this only sends a notification. If the session expired in the
+    // background, `user.id` would throw here and leave the success modal
+    // stuck instead of closing, even though the refund itself is fine.
+    // Skip the notification rather than crash the flow.
     const { data: { session } } = await supabase.auth.getSession()
     const user = session?.user
-    await supabase.from('notifications').insert({
-      user_id: user.id,
-      title: 'Refund Created',
-      message: `৳${Number.parseFloat(form.amount).toLocaleString()} refund — ${form.reason}`,
-      type: 'info', is_read: false,
-    })
+    if (user) {
+      await supabase.from('notifications').insert({
+        user_id: user.id,
+        title: 'Refund Created',
+        message: `৳${Number.parseFloat(form.amount).toLocaleString()} refund — ${form.reason}`,
+        type: 'info', is_read: false,
+      })
+    }
     onSaved()
   }
 
