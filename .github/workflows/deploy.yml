@@ -15,7 +15,7 @@ jobs:
       - name: Install dependencies
         working-directory: apps/web
         run: |
-          npm install -g pnpm
+          npm install -g pnpm@10
           # --frozen-lockfile ensures CI installs exactly what is pinned in
           # pnpm-lock.yaml and fails loudly if the lockfile is out of date.
           pnpm install --frozen-lockfile
@@ -43,7 +43,7 @@ jobs:
       - name: Install dependencies
         working-directory: apps/api
         run: |
-          npm install -g pnpm
+          npm install -g pnpm@10
           pnpm install --frozen-lockfile
       - name: Deploy to Cloudflare Workers
         uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3.15.0
