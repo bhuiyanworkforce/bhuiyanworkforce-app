@@ -2,6 +2,7 @@ import PropTypes from 'prop-types'
 import { useState, useEffect } from 'react'
 import { useSupabaseQuery } from '../../hooks/useSupabaseQuery'
 import { supabase } from '../../lib/supabase'
+import { safeDelete } from '../../lib/utils'
 import { Plus, X, ChevronRight, AlertTriangle, RefreshCw, Trash2 } from 'lucide-react'
 import { ListSkeleton } from '../../components/Skeleton'
 
@@ -103,10 +104,26 @@ function ChequeDetail({ cheque: initial, onClose, onUpdated }) {
     return () => document.removeEventListener('keydown', handleKey)
   }, [onClose])
 
+  // Fix: two separate problems here.
+  //   1. `setUpdating(true)` was never called — only `setUpdating(false)`
+  //      at the end. The buttons are wired to `disabled={updating}`, so
+  //      they never actually disabled during the request. A double-tap
+  //      on "Mark as Cleared" could fire this twice and create two
+  //      expense entries for the same cheque.
+  //   2. Neither write was checked. A failed status update looked like
+  //      success, and a failed expense insert after a successful status
+  //      change left the cheque marked "cleared" with no matching
+  //      expense record.
   async function updateStatus(status) {
-    await supabase.from('cheques').update({ status }).eq('id', cheque.id)
+    setUpdating(true)
+    const { error: statusErr } = await supabase.from('cheques').update({ status }).eq('id', cheque.id)
+    if (statusErr) {
+      alert(`Could not update status: ${statusErr.message}`)
+      setUpdating(false)
+      return
+    }
     if (status === 'cleared' && cheque.type === 'payable') {
-      await supabase.from('expenses').insert({
+      const { error: expenseErr } = await supabase.from('expenses').insert({
         date: new Date().toISOString().split('T')[0],
         category: 'other',
         description: `Cheque cleared — ${cheque.cheque_no} · ${cheque.party_name}`,
@@ -114,6 +131,9 @@ function ChequeDetail({ cheque: initial, onClose, onUpdated }) {
         payment_method: 'cheque',
         reference_no: cheque.cheque_no,
       })
+      if (expenseErr) {
+        alert(`Marked as cleared, but the matching expense record failed to save (${expenseErr.message}). Please add it manually in Expenses so the books stay accurate.`)
+      }
     }
     setCheque(prev => ({ ...prev, status }))
     onUpdated()
@@ -203,8 +223,9 @@ export default function Cheques() {
   const [confirmDelete, setConfirmDelete] = useState(null)
 
   async function handleDelete(id) {
-    await supabase.from('cheques').delete().eq('id', id)
+    const result = await safeDelete(supabase, 'cheques', 'id', id)
     setConfirmDelete(null)
+    if (!result.ok) { alert(result.message); return }
     refresh()
   }
   const [refreshing, setRefreshing] = useState(false)
