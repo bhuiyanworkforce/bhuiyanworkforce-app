@@ -30,7 +30,7 @@ function AddRefundModal({ onClose, onSaved }) {
   }, [onClose])
 
   useEffect(() => {
-    supabase.from('candidates').select('id, full_name').order('full_name')
+    supabase.from('candidates').select('id, full_name').is('archived_at', null).order('full_name')
       .then(({ data }) => setCandidates(data || []))
     supabase.from('invoices').select('id, invoice_no, total').eq('status', 'paid')
       .then(({ data }) => setInvoices(data || []))
