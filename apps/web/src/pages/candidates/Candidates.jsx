@@ -2,13 +2,14 @@ import { useEffect, useState, useCallback } from 'react'
 import { useLocation } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
-import { Plus, Search, ChevronRight, RefreshCw } from 'lucide-react'
+import { Plus, Search, ChevronRight, RefreshCw, FileSpreadsheet } from 'lucide-react'
 import {
   CANDIDATE_PIPELINE_STAGES as PIPELINE_STAGES,
   stageColor,
   stageLabel,
 } from '../../lib/constants'
 import AddCandidateModal from './AddCandidateModal'
+import ImportCandidatesModal from './ImportCandidatesModal'
 import SmartPassportUpload from '../passports/SmartPassportUpload'
 import CandidateDetail from './CandidateDetail'
 import { ListSkeleton } from '../../components/Skeleton'
@@ -35,6 +36,7 @@ export default function Candidates() {
   const [showArchived, setShowArchived] = useState(false)
   const [showAdd, setShowAdd] = useState(false)
   const [showSmartUpload, setShowSmartUpload] = useState(false)
+  const [showImport, setShowImport] = useState(false)
   const [selected, setSelected] = useState(null)
   const [stageCounts, setStageCounts] = useState({})
   const [error, setError] = useState(null)
@@ -156,6 +158,10 @@ export default function Candidates() {
                   className="flex items-center gap-2 bg-gradient-to-r from-emerald-500 to-teal-600 text-white px-4 py-2.5 rounded-xl text-sm font-bold shadow-lg">
                   <Plus size={16} /> Smart Upload
                 </button>
+                <button onClick={() => setShowImport(true)}
+                  className="flex items-center gap-2 bg-slate-800 border border-slate-700 text-slate-300 px-3 py-2.5 rounded-xl text-sm font-bold">
+                  <FileSpreadsheet size={16} />
+                </button>
                 <button onClick={() => setShowAdd(true)}
                   className="flex items-center gap-2 bg-slate-800 border border-slate-700 text-slate-300 px-3 py-2.5 rounded-xl text-sm font-bold">
                   <Plus size={16} />
@@ -256,7 +262,7 @@ export default function Candidates() {
           onClose={() => setShowAdd(false)}
           onSaved={() => {
             setShowAdd(false)
-            fetchCandidates(search, filterStage, 0)
+            fetchCandidates(search, filterStage, showArchived, 0)
             fetchStageCounts()
           }}
         />
@@ -268,7 +274,18 @@ export default function Candidates() {
           onClose={() => setShowSmartUpload(false)}
           onSaved={() => {
             setShowSmartUpload(false)
-            fetchCandidates(search, filterStage, 0)
+            fetchCandidates(search, filterStage, showArchived, 0)
+            fetchStageCounts()
+          }}
+        />
+      )}
+
+      {canAdd && (
+        <ImportCandidatesModal
+          open={showImport}
+          onClose={() => setShowImport(false)}
+          onImported={() => {
+            fetchCandidates(search, filterStage, showArchived, 0)
             fetchStageCounts()
           }}
         />
