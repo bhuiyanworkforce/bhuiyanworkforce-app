@@ -14,7 +14,7 @@ export default function AddVisaModal({ onClose, onSaved }) {
   const set = (k,v) => setForm(p=>({...p,[k]:v}))
 
   useEffect(() => {
-    supabase.from('candidates').select('id,full_name').order('full_name').then(({data})=>setCandidates(data||[]))
+    supabase.from('candidates').select('id,full_name').is('archived_at', null).order('full_name').then(({data})=>setCandidates(data||[]))
   }, [])
 
   useEffect(() => {
