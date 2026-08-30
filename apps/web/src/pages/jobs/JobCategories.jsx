@@ -48,8 +48,8 @@ export default function JobCategories() {
 
     const [{ data: cats }, { data: allCands }, { count: unassigned }] = await Promise.all([
       supabase.from('job_categories').select('*').order('sort_order'),
-      supabase.from('candidates').select('job_category_id').not('job_category_id', 'is', null),
-      supabase.from('candidates').select('*', { count: 'exact', head: true }).is('job_category_id', null),
+      supabase.from('candidates').select('job_category_id').not('job_category_id', 'is', null).is('archived_at', null),
+      supabase.from('candidates').select('*', { count: 'exact', head: true }).is('job_category_id', null).is('archived_at', null),
     ])
 
     const countMap = {}
@@ -74,6 +74,7 @@ export default function JobCategories() {
         .from('candidates')
         .select('*, agents(full_name)')
         .is('job_category_id', null)
+        .is('archived_at', null)
         .order('created_at', { ascending: false })
       if (searchTerm.trim()) q = q.ilike('full_name', `%${searchTerm.trim()}%`)
       const { data } = await q
@@ -83,6 +84,7 @@ export default function JobCategories() {
         .from('candidates')
         .select('*, agents(full_name), job_categories(name, icon, color)')
         .eq('job_category_id', catId)
+        .is('archived_at', null)
         .order('created_at', { ascending: false })
       if (searchTerm.trim()) q = q.ilike('full_name', `%${searchTerm.trim()}%`)
       const { data } = await q
@@ -258,7 +260,7 @@ export default function JobCategories() {
                         </div>
                         <ChevronRight size={14} className="text-slate-600 shrink-0" />
                       </button>
-                      {confirmDelete === c.id ? (
+                      {canAdd && (confirmDelete === c.id ? (
                         <div className="flex flex-col items-end gap-1 shrink-0">
                           <button onClick={() => handleDeleteCandidate(c.id)} className="text-xs bg-red-500/20 text-red-400 px-2 py-0.5 rounded-full font-semibold">Delete</button>
                           <button onClick={() => setConfirmDelete(null)} className="text-xs text-slate-600 px-2 py-0.5">Cancel</button>
@@ -267,7 +269,7 @@ export default function JobCategories() {
                         <button onClick={() => setConfirmDelete(c.id)} className="text-slate-600 hover:text-red-400 transition-colors p-1 shrink-0">
                           <Trash2 size={15}/>
                         </button>
-                      )}
+                      ))}
                     </div>
                   ))}
                 </div>
@@ -286,6 +288,7 @@ export default function JobCategories() {
       {openCandidate && (
         <CandidateDetail
           candidate={openCandidate}
+          viewOnly={isAgent}
           onClose={() => setOpenCandidate(null)}
         />
       )}
