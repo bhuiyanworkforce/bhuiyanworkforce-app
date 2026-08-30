@@ -36,7 +36,7 @@ const STATUS_COLOR_I = {
   partial: 'bg-amber-500/15 text-amber-400',
 }
 
-export default function CandidateDetail({ candidate: initialCandidate, onClose }) {
+export default function CandidateDetail({ candidate: initialCandidate, onClose, viewOnly = false }) {
   const [candidate, setCandidate]         = useState(initialCandidate)
   const [passports, setPassports]         = useState([])
   const [invoices, setInvoices]           = useState([])
@@ -53,6 +53,8 @@ export default function CandidateDetail({ candidate: initialCandidate, onClose }
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deletingCandidate, setDeletingCandidate] = useState(false)
   const [deleteError, setDeleteError]     = useState('')
+  const [archiving, setArchiving]         = useState(false)
+  const [archiveError, setArchiveError]   = useState('')
 
   // ── Fix: candidate delete was silently doing nothing ────────────────────
   // The old version never checked the result of the delete call, so two
@@ -94,7 +96,7 @@ export default function CandidateDetail({ candidate: initialCandidate, onClose }
       if (refundCount) blockers.push(`${refundCount} refund${refundCount !== 1 ? 's' : ''}`)
 
       if (blockers.length) {
-        setDeleteError(`Can't delete — this candidate still has ${blockers.join(', ')} attached. Remove or reassign those first.`)
+        setDeleteError(`Can't delete — this candidate still has ${blockers.join(', ')} attached, and that history can't be removed. Use Archive instead to hide them from the active list.`)
         setDeletingCandidate(false)
         return
       }
@@ -111,7 +113,7 @@ export default function CandidateDetail({ candidate: initialCandidate, onClose }
         if (error.code === '23503') {
           const match = error.message.match(/on table "([^"]+)"/)
           const blockingTable = match ? match[1].replace(/_/g, ' ') : 'another record'
-          setDeleteError(`Can't delete — this candidate still has ${blockingTable} attached. Remove those first.`)
+          setDeleteError(`Can't delete — this candidate still has ${blockingTable} attached, and that history can't be removed. Use Archive instead to hide them from the active list.`)
         } else {
           setDeleteError(error.message)
         }
@@ -128,6 +130,46 @@ export default function CandidateDetail({ candidate: initialCandidate, onClose }
       setDeleteError(err.message || 'Something went wrong deleting this candidate.')
       setDeletingCandidate(false)
     }
+  }
+
+  // Archiving hides a candidate from the active list, search results, and
+  // every "pick a candidate" dropdown app-wide, without touching any of
+  // their financial history — the opposite of a hard delete, which those
+  // same records correctly block. Fully reversible via Restore below.
+  async function handleArchive() {
+    setArchiveError('')
+    setArchiving(true)
+    const { data, error } = await supabase
+      .from('candidates')
+      .update({ archived_at: new Date().toISOString() })
+      .eq('id', candidate.id)
+      .select()
+      .single()
+    if (error) {
+      setArchiveError(error.message)
+      setArchiving(false)
+      return
+    }
+    setCandidate(data)
+    setArchiving(false)
+  }
+
+  async function handleRestore() {
+    setArchiveError('')
+    setArchiving(true)
+    const { data, error } = await supabase
+      .from('candidates')
+      .update({ archived_at: null })
+      .eq('id', candidate.id)
+      .select()
+      .single()
+    if (error) {
+      setArchiveError(error.message)
+      setArchiving(false)
+      return
+    }
+    setCandidate(data)
+    setArchiving(false)
   }
 
   // ── Improvement F ──────────────────────────────────────────────────────────
@@ -428,26 +470,45 @@ export default function CandidateDetail({ candidate: initialCandidate, onClose }
           <div className="flex items-center gap-3 flex-1 min-w-0">
             <button onClick={onClose}><X size={20} className="text-slate-400"/></button>
             <h2 className="text-slate-100 font-bold text-base truncate">{candidate.full_name}</h2>
-          </div>
-          <div className="flex items-center gap-2 flex-none">
-            {confirmDelete ? (
-              <>
-                <button onClick={() => { setConfirmDelete(false); setDeleteError('') }} className="text-xs text-slate-500 px-2 py-1">Cancel</button>
-                <button onClick={handleDeleteCandidate} disabled={deletingCandidate} className="flex items-center gap-1 bg-red-500/20 text-red-400 px-3 py-1.5 rounded-xl text-xs font-semibold disabled:opacity-50">
-                  <Trash2 size={13}/> {deletingCandidate ? 'Deleting...' : 'Confirm'}
-                </button>
-              </>
-            ) : (
-              <button onClick={() => setConfirmDelete(true)} className="text-slate-600 hover:text-red-400 transition-colors p-1.5">
-                <Trash2 size={16}/>
-              </button>
+            {candidate.archived_at && (
+              <span className="flex-none bg-amber-500/15 text-amber-400 text-[10px] font-bold px-2 py-1 rounded-full">ARCHIVED</span>
             )}
-            <button
-              onClick={() => setShowEdit(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold transition-colors">
-              <Edit2 size={13}/> Edit
-            </button>
           </div>
+          {!viewOnly && (
+            <div className="flex items-center gap-2 flex-none">
+              {archiveError && (
+                <span className="text-[10px] text-red-400 max-w-[120px] truncate" title={archiveError}>{archiveError}</span>
+              )}
+              {candidate.archived_at ? (
+                <button onClick={handleRestore} disabled={archiving}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 rounded-xl text-xs font-bold transition-colors disabled:opacity-50">
+                  {archiving ? 'Restoring...' : 'Restore'}
+                </button>
+              ) : confirmDelete ? (
+                <>
+                  <button onClick={() => { setConfirmDelete(false); setDeleteError('') }} className="text-xs text-slate-500 px-2 py-1">Cancel</button>
+                  <button onClick={handleDeleteCandidate} disabled={deletingCandidate} className="flex items-center gap-1 bg-red-500/20 text-red-400 px-3 py-1.5 rounded-xl text-xs font-semibold disabled:opacity-50">
+                    <Trash2 size={13}/> {deletingCandidate ? 'Deleting...' : 'Confirm'}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button onClick={handleArchive} disabled={archiving}
+                    className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-amber-400 rounded-xl text-xs font-bold transition-colors disabled:opacity-50">
+                    {archiving ? 'Archiving...' : 'Archive'}
+                  </button>
+                  <button onClick={() => setConfirmDelete(true)} className="text-slate-600 hover:text-red-400 transition-colors p-1.5">
+                    <Trash2 size={16}/>
+                  </button>
+                </>
+              )}
+              <button
+                onClick={() => setShowEdit(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold transition-colors">
+                <Edit2 size={13}/> Edit
+              </button>
+            </div>
+          )}
         </div>
 
         <div className="overflow-y-auto flex-1 px-4 py-5 flex flex-col gap-4">
@@ -550,4 +611,5 @@ CandidateDetail.propTypes = {
     agents:        PropTypes.shape({ full_name: PropTypes.string }),
   }).isRequired,
   onClose: PropTypes.func.isRequired,
+  viewOnly: PropTypes.bool,
 }

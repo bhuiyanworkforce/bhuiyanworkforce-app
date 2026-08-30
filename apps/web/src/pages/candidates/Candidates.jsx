@@ -32,6 +32,7 @@ export default function Candidates() {
   const [hasMore, setHasMore] = useState(true)
   const [search, setSearch] = useState('')
   const [filterStage, setFilterStage] = useState('all')
+  const [showArchived, setShowArchived] = useState(false)
   const [showAdd, setShowAdd] = useState(false)
   const [showSmartUpload, setShowSmartUpload] = useState(false)
   const [selected, setSelected] = useState(null)
@@ -56,7 +57,14 @@ export default function Candidates() {
     }
 
     console.warn('get_candidate_stage_counts RPC not available, falling back:', rpcError?.message)
-    const { data: rows } = await supabase.from('candidates').select('status')
+    // Fix: this fallback previously counted every candidate, archived or
+    // not. Stage counts represent the active pipeline, so archived
+    // candidates shouldn't inflate them.
+    // NOTE: the `get_candidate_stage_counts` RPC itself lives directly in
+    // the Supabase project (not in a tracked migration), so it likely
+    // still counts archived candidates too until it's updated by hand in
+    // the SQL editor to add `WHERE archived_at IS NULL`.
+    const { data: rows } = await supabase.from('candidates').select('status').is('archived_at', null)
     const counts = {}
     rows?.forEach(c => {
       const s = c.status || 'new'
@@ -67,7 +75,7 @@ export default function Candidates() {
 
   useEffect(() => { fetchStageCounts() }, [fetchStageCounts])
 
-  const fetchCandidates = useCallback(async (searchTerm, stage, newOffset = 0) => {
+  const fetchCandidates = useCallback(async (searchTerm, stage, archived, newOffset = 0) => {
     if (newOffset === 0) setLoading(true)
     else setSearching(true)
     setError(null)
@@ -78,6 +86,12 @@ export default function Candidates() {
         .select('*, agents(full_name), job_categories(name, icon, color)')
         .order('created_at', { ascending: false })
         .range(newOffset, newOffset + PAGE_SIZE - 1)
+
+      // Archived candidates are hidden from the everyday list by default —
+      // they're only reachable here by explicitly switching to the
+      // Archived view, so they don't clutter day-to-day work while still
+      // being findable for restoring.
+      query = archived ? query.not('archived_at', 'is', null) : query.is('archived_at', null)
 
       if (stage && stage !== 'all') query = query.eq('status', stage)
       if (searchTerm?.trim()) query = query.or(`full_name.ilike.%${searchTerm}%,phone.ilike.%${searchTerm}%`)
@@ -100,21 +114,21 @@ export default function Candidates() {
   }, [])
 
   useEffect(() => {
-    const t = setTimeout(() => fetchCandidates(search, filterStage, 0), 300)
+    const t = setTimeout(() => fetchCandidates(search, filterStage, showArchived, 0), 300)
     return () => clearTimeout(t)
-  }, [search, filterStage, fetchCandidates])
+  }, [search, filterStage, showArchived, fetchCandidates])
 
   async function handleRefresh() {
     setRefreshing(true)
     await Promise.all([
-      fetchCandidates(search, filterStage, 0),
+      fetchCandidates(search, filterStage, showArchived, 0),
       fetchStageCounts(),
     ])
     setRefreshing(false)
   }
 
   async function loadMore() {
-    await fetchCandidates(search, filterStage, offset + PAGE_SIZE)
+    await fetchCandidates(search, filterStage, showArchived, offset + PAGE_SIZE)
   }
 
   const totalCount = Object.values(stageCounts).reduce((a, b) => a + b, 0)
@@ -125,9 +139,13 @@ export default function Candidates() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-extrabold text-slate-100">Candidates</h1>
-            <p className="text-slate-500 text-sm">{totalCount} total</p>
+            <p className="text-slate-500 text-sm">{showArchived ? 'Archived' : `${totalCount} total`}</p>
           </div>
           <div className="flex items-center gap-2">
+            <button onClick={() => setShowArchived(v => !v)}
+              className={`px-3 py-2 rounded-xl text-xs font-bold transition-colors ${showArchived ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' : 'bg-slate-800 text-slate-400'}`}>
+              {showArchived ? 'Viewing Archived' : 'Archived'}
+            </button>
             <button onClick={handleRefresh} disabled={refreshing}
               className="p-2 rounded-xl bg-slate-800 text-slate-400 disabled:opacity-50">
               <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
@@ -155,18 +173,20 @@ export default function Candidates() {
             className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-9 pr-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500" />
         </div>
 
-        <div className="flex gap-2 overflow-x-auto pb-1">
-          <button onClick={() => setFilterStage('all')}
-            className={`flex-none px-3 py-1.5 rounded-full text-xs font-bold transition-colors ${filterStage === 'all' ? 'bg-indigo-500 text-white' : 'bg-slate-800 text-slate-400'}`}>
-            All {totalCount > 0 && `(${totalCount})`}
-          </button>
-          {PIPELINE_STAGES.filter(s => stageCounts[s.key]).map(s => (
-            <button key={s.key} onClick={() => setFilterStage(s.key)}
-              className={`flex-none px-3 py-1.5 rounded-full text-xs font-bold transition-colors ${filterStage === s.key ? 'bg-indigo-500 text-white' : 'bg-slate-800 text-slate-400'}`}>
-              {s.label} ({stageCounts[s.key]})
+        {!showArchived && (
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            <button onClick={() => setFilterStage('all')}
+              className={`flex-none px-3 py-1.5 rounded-full text-xs font-bold transition-colors ${filterStage === 'all' ? 'bg-indigo-500 text-white' : 'bg-slate-800 text-slate-400'}`}>
+              All {totalCount > 0 && `(${totalCount})`}
             </button>
-          ))}
-        </div>
+            {PIPELINE_STAGES.filter(s => stageCounts[s.key]).map(s => (
+              <button key={s.key} onClick={() => setFilterStage(s.key)}
+                className={`flex-none px-3 py-1.5 rounded-full text-xs font-bold transition-colors ${filterStage === s.key ? 'bg-indigo-500 text-white' : 'bg-slate-800 text-slate-400'}`}>
+                {s.label} ({stageCounts[s.key]})
+              </button>
+            ))}
+          </div>
+        )}
 
         {error ? (
           <div className="flex flex-col items-center justify-center py-12 gap-3">
@@ -260,7 +280,7 @@ export default function Candidates() {
           viewOnly={isAgent}
           onClose={() => {
             setSelected(null)
-            fetchCandidates(search, filterStage, 0)
+            fetchCandidates(search, filterStage, showArchived, 0)
             fetchStageCounts()
           }}
         />
