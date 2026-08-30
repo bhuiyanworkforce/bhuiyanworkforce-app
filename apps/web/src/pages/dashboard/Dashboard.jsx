@@ -54,7 +54,7 @@ export default function Dashboard() {
         supabase.from('passports').select('*', { count: 'exact', head: true }),
         supabase.from('visa_applications').select('*', { count: 'exact', head: true })
           .not('status', 'in', '("approved","rejected","cancelled")'),
-        supabase.from('candidates').select('*', { count: 'exact', head: true }),
+        supabase.from('candidates').select('*', { count: 'exact', head: true }).is('archived_at', null),
         supabase.from('agents').select('*', { count: 'exact', head: true }),
         supabase.from('passports').select('status'),
         supabase.from('passports')
