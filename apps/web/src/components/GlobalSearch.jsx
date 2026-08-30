@@ -52,6 +52,7 @@ export default function GlobalSearch() {
         supabase.from('candidates')
           .select('id, full_name, phone, nationality')
           .or(`full_name.ilike.${term},phone.ilike.${term}`)
+          .is('archived_at', null)
           .limit(4),
         supabase.from('passports')
           .select('id, passport_no, status, candidates(full_name)')
