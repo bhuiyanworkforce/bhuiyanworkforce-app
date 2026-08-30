@@ -23,7 +23,7 @@ export default function AddPassportModal({ open, onClose, onSaved }) {
       // Clear error and reset form every time the modal opens
       setError('')
       setForm(EMPTY_FORM)
-      supabase.from('candidates').select('id, full_name').order('full_name')
+      supabase.from('candidates').select('id, full_name').is('archived_at', null).order('full_name')
         .then(({ data }) => setCandidates(data || []))
     }
   }, [open])
