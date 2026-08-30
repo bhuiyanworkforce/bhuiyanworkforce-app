@@ -170,6 +170,8 @@ export default function SmartPassportUpload({ open, onClose, onSaved }) {
   const [selectedCat, setSelectedCat] = useState(null)
   const [saveError, setSaveError] = useState('')
   const [savedData, setSavedData] = useState(null)
+  const [duplicatePassport, setDuplicatePassport] = useState(null)
+  const [confirmedDuplicate, setConfirmedDuplicate] = useState(false)
 
   const [form, setForm] = useState({
     full_name:     '',
@@ -183,7 +185,7 @@ export default function SmartPassportUpload({ open, onClose, onSaved }) {
     address:       '',
   })
 
-  const set = (k, v) => setForm(p => ({ ...p, [k]: v }))
+  const set = (k, v) => { setForm(p => ({ ...p, [k]: v })); setDuplicatePassport(null); setConfirmedDuplicate(false) }
 
   // Load categories when modal opens
   useEffect(() => {
@@ -288,15 +290,39 @@ export default function SmartPassportUpload({ open, onClose, onSaved }) {
   }
 
   // ── Save ────────────────────────────────────────────────────
+  // Fix / feature: two problems addressed together here.
+  //   1. Nothing checked whether this passport number was already on
+  //      file before creating a brand new candidate for it — the most
+  //      likely real-world trigger being the same physical passport
+  //      scanned twice by mistake.
+  //   2. If passport creation failed AFTER candidate creation already
+  //      succeeded (including from exactly that duplicate case, if a
+  //      unique constraint exists), the candidate was left behind
+  //      orphaned with no passport and no rollback — the same "half
+  //      finished record" bug already fixed in CreateInvoiceModal.
   async function handleSave() {
     if (!form.full_name || !form.passport_no) {
       setSaveError('Full name and passport number are required')
       return
     }
 
+    if (!confirmedDuplicate) {
+      const passportNo = form.passport_no.trim().toUpperCase()
+      const { data: existing } = await supabase
+        .from('passports')
+        .select('candidate_id, candidates(full_name, archived_at)')
+        .eq('passport_no', passportNo)
+        .limit(1)
+      if (existing && existing.length > 0) {
+        setDuplicatePassport(existing[0])
+        return
+      }
+    }
+
     setStep(STEP_SAVING)
     setSaveError('')
 
+    let createdCandidateId = null
     try {
       // 1. Create candidate
       const { data: candidate, error: cErr } = await supabase
@@ -314,6 +340,7 @@ export default function SmartPassportUpload({ open, onClose, onSaved }) {
         .single()
 
       if (cErr) throw cErr
+      createdCandidateId = candidate.id
 
       // 2. Create passport linked to candidate
       const { error: pErr } = await supabase
@@ -329,16 +356,35 @@ export default function SmartPassportUpload({ open, onClose, onSaved }) {
           created_by:     user?.id,
         })
 
-      if (pErr) throw pErr
+      if (pErr) {
+        // Roll back the candidate we just created rather than leave an
+        // orphaned record with no passport behind.
+        await supabase.from('candidates').delete().eq('id', candidate.id)
+        throw pErr
+      }
 
       setSavedData({ candidate, category: selectedCat })
       setStep(STEP_DONE)
       onSaved()
 
     } catch (err) {
-      setSaveError(err.message)
+      setSaveError(createdCandidateId ? `${err.message} (the partially created candidate record was removed)` : err.message)
       setStep(STEP_REVIEW)
     }
+  }
+
+  async function handleRestoreDuplicatePassport() {
+    setStep(STEP_SAVING)
+    setSaveError('')
+    const { error } = await supabase.from('candidates').update({ archived_at: null }).eq('id', duplicatePassport.candidate_id)
+    if (error) {
+      setSaveError(error.message)
+      setStep(STEP_REVIEW)
+      return
+    }
+    setSavedData({ candidate: { id: duplicatePassport.candidate_id, full_name: duplicatePassport.candidates?.full_name }, category: selectedCat })
+    setStep(STEP_DONE)
+    onSaved()
   }
 
   // ── Render ──────────────────────────────────────────────────
@@ -527,6 +573,22 @@ export default function SmartPassportUpload({ open, onClose, onSaved }) {
             </div>
           )}
 
+          {duplicatePassport && (
+            <div className="bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs rounded-xl px-4 py-3 mb-4 flex flex-col gap-2">
+              <span>
+                {duplicatePassport.candidates?.archived_at
+                  ? `This passport number is already on file for an archived candidate: ${duplicatePassport.candidates?.full_name}. Restore them instead of creating a duplicate?`
+                  : `This passport number is already on file for: ${duplicatePassport.candidates?.full_name}.`}
+              </span>
+            </div>
+          )}
+
+          {saveError && (
+            <div className="bg-red-500/10 border border-red-500/30 text-red-400 text-xs rounded-xl px-4 py-3 mb-4">
+              {saveError}
+            </div>
+          )}
+
           <div className="flex gap-3">
             <button
               onClick={() => setStep(STEP_REVIEW)}
@@ -534,12 +596,36 @@ export default function SmartPassportUpload({ open, onClose, onSaved }) {
             >
               <ArrowLeft size={14} /> Back
             </button>
-            <button
-              onClick={handleSave}
-              className="flex-1 bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-bold py-3 rounded-xl text-sm flex items-center justify-center gap-2"
-            >
-              <Check size={16} /> Save Candidate & Passport
-            </button>
+            {duplicatePassport ? (
+              duplicatePassport.candidates?.archived_at ? (
+                <>
+                  <button onClick={() => setDuplicatePassport(null)} className="px-4 py-3 text-slate-500 text-sm font-semibold">Cancel</button>
+                  <button
+                    onClick={handleRestoreDuplicatePassport}
+                    className="flex-1 bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-bold py-3 rounded-xl text-sm"
+                  >
+                    Restore {duplicatePassport.candidates?.full_name}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button onClick={() => setDuplicatePassport(null)} className="px-4 py-3 text-slate-500 text-sm font-semibold">Cancel</button>
+                  <button
+                    onClick={() => { setConfirmedDuplicate(true); handleSave() }}
+                    className="flex-1 bg-slate-800 border border-amber-500/40 text-amber-400 font-bold py-3 rounded-xl text-sm"
+                  >
+                    Save as New Anyway
+                  </button>
+                </>
+              )
+            ) : (
+              <button
+                onClick={handleSave}
+                className="flex-1 bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-bold py-3 rounded-xl text-sm flex items-center justify-center gap-2"
+              >
+                <Check size={16} /> Save Candidate & Passport
+              </button>
+            )}
           </div>
         </div>
       )
