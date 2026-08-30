@@ -17,7 +17,7 @@ export default function CreateInvoiceModal({ onClose, onSaved }) {
 
   useEffect(() => {
     Promise.all([
-      supabase.from('candidates').select('id, full_name, agent_id').order('full_name'),
+      supabase.from('candidates').select('id, full_name, agent_id').is('archived_at', null).order('full_name'),
       supabase.from('agents').select('id, full_name').order('full_name'),
     ]).then(([{ data: cands }, { data: ags }]) => {
       setCandidates(cands || [])
