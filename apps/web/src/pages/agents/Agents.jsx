@@ -25,7 +25,7 @@ export default function Agents() {
       ] = await Promise.all([
         supabase.from('agents').select('*').order('created_at', { ascending: false }),
         supabase.from('invoices').select('agent_id, total, status'),
-        supabase.from('candidates').select('agent_id'),
+        supabase.from('candidates').select('agent_id').is('archived_at', null),
       ])
       if (e1) throw e1
 

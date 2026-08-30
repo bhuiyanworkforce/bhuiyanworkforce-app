@@ -24,7 +24,7 @@ export default function AgentDetail({ agent, onClose }) {
 
   async function fetchData() {
     const [{ data: cands }, { data: invs }, { data: pays }] = await Promise.all([
-      supabase.from('candidates').select('*').eq('agent_id', agent.id).order('created_at', { ascending: false }),
+      supabase.from('candidates').select('*').eq('agent_id', agent.id).is('archived_at', null).order('created_at', { ascending: false }),
       supabase.from('invoices').select('*').eq('agent_id', agent.id).order('issued_at', { ascending: false }),
       supabase.from('agent_payouts').select('*').eq('agent_id', agent.id).order('paid_at', { ascending: false }),
     ])
