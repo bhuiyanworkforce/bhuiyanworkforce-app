@@ -198,10 +198,16 @@ export default function Vendors() {
     try {
       const { data, error: viewErr } = await supabase.from('vendor_balances').select('*').order('name')
       if (viewErr) {
-        // fallback to vendors table directly if view fails
+        // Fix: the vendor_balances view returns total_spent, but the raw
+        // vendors table (used here as a fallback if the view query ever
+        // fails) only has a `balance` column — a different field name.
+        // Without mapping it, every vendor's balance badge silently
+        // disappeared in fallback mode (v.total_spent was undefined, so
+        // the `> 0` check in the render just never rendered anything,
+        // with no error shown).
         const { data: d2, error: tableErr } = await supabase.from('vendors').select('*').order('name')
         if (tableErr) throw tableErr
-        setVendors(d2 || [])
+        setVendors((d2 || []).map(v => ({ ...v, total_spent: v.balance ?? 0 })))
       } else {
         setVendors(data || [])
       }
