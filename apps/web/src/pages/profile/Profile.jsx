@@ -125,6 +125,16 @@ export default function Profile() {
     client:  'bg-amber-500/20 text-amber-300',
   }
 
+  // Stored value stays 'agent' (sub-agent login role) — only the label changes,
+  // since "Agent" now refers to the international-intermediary business entity.
+  const ROLE_LABELS = {
+    owner:     'Owner',
+    manager:   'Manager',
+    agent:     'Sub Agent',
+    assistant: 'Assistant',
+    client:    'Client',
+  }
+
   function getPasswordStrengthColor(len) {
     if (len >= 12) return 'bg-emerald-400'
     if (len >= 8) return 'bg-amber-400'
@@ -214,8 +224,8 @@ export default function Profile() {
               <p className="text-slate-100 font-bold text-lg">{form.full_name || 'No name set'}</p>
               <p className="text-slate-500 text-sm">{user?.email}</p>
               {profile?.role && (
-                <span className={`inline-block mt-2 text-xs font-bold px-3 py-1 rounded-full capitalize ${ROLE_STYLES[profile.role] || 'bg-slate-700 text-slate-300'}`}>
-                  {profile.role}
+                <span className={`inline-block mt-2 text-xs font-bold px-3 py-1 rounded-full ${ROLE_STYLES[profile.role] || 'bg-slate-700 text-slate-300'}`}>
+                  {ROLE_LABELS[profile.role] || profile.role}
                 </span>
               )}
             </div>
@@ -258,8 +268,8 @@ export default function Profile() {
                   <label htmlFor="role" className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-1.5">Role <span className="text-slate-600 font-normal">(set by system)</span></label>
                   <div className="relative">
                     <Building size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
-                    <input id="role" type="text" value={profile.role || ''} disabled
-                      className="w-full bg-slate-800/50 border border-slate-700/50 rounded-xl pl-10 pr-4 py-3 text-sm text-slate-500 cursor-not-allowed capitalize" />
+                    <input id="role" type="text" value={ROLE_LABELS[profile.role] || profile.role || ''} disabled
+                      className="w-full bg-slate-800/50 border border-slate-700/50 rounded-xl pl-10 pr-4 py-3 text-sm text-slate-500 cursor-not-allowed" />
                   </div>
                 </div>
               )}
