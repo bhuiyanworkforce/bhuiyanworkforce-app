@@ -79,8 +79,8 @@ function exportCSV(rows, filename) {
 }
 
 async function exportInvoicesCSV() {
-  const { data } = await supabase.from('invoices').select('invoice_no, status, total, issued_at, due_date, candidates(full_name), agents(full_name)').order('issued_at', { ascending: false })
-  exportCSV((data||[]).map(i => ({ Invoice: i.invoice_no, Candidate: i.candidates?.full_name||'', Agent: i.agents?.full_name||'', Amount: i.total||0, Status: i.status, 'Issue Date': i.issued_at?.split('T')[0]||'', 'Due Date': i.due_date||'' })), 'invoices')
+  const { data } = await supabase.from('invoices').select('invoice_no, status, total, issued_at, due_date, candidates(full_name), sub_agents(full_name)').order('issued_at', { ascending: false })
+  exportCSV((data||[]).map(i => ({ Invoice: i.invoice_no, Candidate: i.candidates?.full_name||'', Sub Agent: i.sub_agents?.full_name||'', Amount: i.total||0, Status: i.status, 'Issue Date': i.issued_at?.split('T')[0]||'', 'Due Date': i.due_date||'' })), 'invoices')
 }
 
 async function exportPassportsCSV() {
@@ -147,11 +147,11 @@ export default function Reports() {
         { data: expenses },
       ] = await Promise.all([
         supabase.from('invoices')
-          .select('total, status, issued_at, agent_id, candidates(full_name)')
+          .select('total, status, issued_at, sub_agent_id, candidates(full_name)')
           .gte('issued_at', from).lte('issued_at', to)
           .order('issued_at', { ascending: true }),
         supabase.from('passports').select('status, created_at'),
-        supabase.from('agents').select('id, full_name, commission_rate'),
+        supabase.from('sub_agents').select('id, full_name, commission_rate'),
         supabase.from('expenses').select('amount, category, date')
           .gte('date', fromDay).lte('date', toDay),
       ])
@@ -174,7 +174,7 @@ export default function Reports() {
         .map(([status, count]) => ({ status, count })).sort((a, b) => b.count - a.count)
 
       const agentPerformance = (agents || []).map(agent => {
-        const agentInvoices = invList.filter(i => i.agent_id === agent.id)
+        const agentInvoices = invList.filter(i => i.sub_agent_id === agent.id)
         const paid = agentInvoices.filter(i => i.status === 'paid').reduce((s, i) => s + i.total, 0)
         const commission = (paid * (Number.parseFloat(agent.commission_rate) || 0)) / 100
         return { ...agent, revenue: paid, commission, invoiceCount: agentInvoices.length }
@@ -207,8 +207,8 @@ export default function Reports() {
 
     try {
       const [{ data: invoices }, { data: agents }, { data: refunds }] = await Promise.all([
-        supabase.from('invoices').select('id, total, status, candidate_id, agent_id, candidates(full_name)').gte('issued_at', from),
-        supabase.from('agents').select('id, commission_rate'),
+        supabase.from('invoices').select('id, total, status, candidate_id, sub_agent_id, candidates(full_name)').gte('issued_at', from),
+        supabase.from('sub_agents').select('id, commission_rate'),
         supabase.from('refunds').select('amount, candidate_id').gte('refund_date', fromDay),
       ])
 
@@ -219,7 +219,7 @@ export default function Reports() {
         const cid = inv.candidate_id; if (!cid) return
         if (!candidateMap[cid]) candidateMap[cid] = { id: cid, name: inv.candidates?.full_name || 'Unknown', revenue: 0, commission: 0, refunds: 0, invoiceCount: 0 }
         const total = Number.parseFloat(inv.total) || 0
-        if (inv.status === 'paid') { candidateMap[cid].revenue += total; candidateMap[cid].commission += (total * (agentMap[inv.agent_id] || 0)) / 100 }
+        if (inv.status === 'paid') { candidateMap[cid].revenue += total; candidateMap[cid].commission += (total * (agentMap[inv.sub_agent_id] || 0)) / 100 }
         candidateMap[cid].invoiceCount += 1
       })
 
@@ -270,7 +270,7 @@ export default function Reports() {
 
   function exportAgentsCSV() {
     exportCSV(data.agentPerformance.map(a => ({
-      Agent: a.full_name,
+      Sub 'Sub Agent': a.full_name,
       'Commission Rate': a.commission_rate + '%',
       'Total Revenue': a.revenue,
       'Commission Due': a.commission,
@@ -461,7 +461,7 @@ export default function Reports() {
             {data.agentPerformance.length > 0 && (
               <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
                 <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800">
-                  <h2 className="text-sm font-bold text-slate-300">Agent Performance</h2>
+                  <h2 className="text-sm font-bold text-slate-300">Sub Agent Performance</h2>
                   <button onClick={exportAgentsCSV} className="flex items-center gap-1 text-indigo-400 text-xs font-semibold"><Download size={13}/> CSV</button>
                 </div>
                 <ul>
@@ -554,7 +554,7 @@ export default function Reports() {
             {[
               { label: 'Export All Invoices',         desc: 'Full invoice history with amounts',                icon: Wallet,     fn: exportInvoicesCSV,  color: 'from-indigo-500 to-violet-600' },
               { label: 'Export Passports',            desc: 'All passport records and status',                  icon: Stamp,      fn: exportPassportsCSV, color: 'from-amber-500 to-orange-600'  },
-              { label: 'Export Agent Report',         desc: 'Performance and commission data',                  icon: Users,      fn: exportAgentsCSV,    color: 'from-pink-500 to-rose-600'     },
+              { label: 'Export Sub Agent Report',         desc: 'Performance and commission data',                  icon: Users,      fn: exportAgentsCSV,    color: 'from-pink-500 to-rose-600'     },
               { label: 'Export Profit per Candidate', desc: 'Revenue, commission, refunds, net profit',         icon: DollarSign, fn: exportProfitCSV,    color: 'from-emerald-500 to-teal-600'  },
               { label: 'Full Backup (JSON)',          desc: 'All data including employees & visa applications',  icon: Download,   fn: exportFullBackup,   color: 'from-slate-500 to-slate-600'   },
             ].map(({ label, desc, icon: Icon, fn, color }) => (
