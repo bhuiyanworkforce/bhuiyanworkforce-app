@@ -5,7 +5,7 @@ import {
   Wallet, LogOut, Menu, X, UserCircle,
   Settings, BarChart2, TrendingDown, Building2,
   Banknote, CreditCard, DollarSign, RotateCcw,
-  ClipboardList, Briefcase, Shield
+  ClipboardList, Briefcase, Shield, Globe, Handshake
 } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import NotificationBell from '../components/NotificationBell';
@@ -18,7 +18,13 @@ const NAV = [
   { to: 'visa', label: 'Visa', icon: FileText, group: 'core' },
   { to: 'candidates', label: 'Candidates', icon: Users, group: 'core' },
   { to: 'job-categories', label: 'Job Categories', icon: Briefcase, group: 'core' },
-  { to: 'agents', label: 'Agents', icon: UserCircle, group: 'core' },
+  { to: 'sub-agents', label: 'Sub Agents', icon: UserCircle, group: 'core' },
+  // Owner-only: international intermediary partners and direct employers.
+  // Hidden from managers/assistants/sub-agents here in the UI, and enforced
+  // for real by RLS (auth.is_owner()) on the agents/employers tables —
+  // this nav filter is a convenience, not the security boundary.
+  { to: 'agents', label: 'Agents', icon: Globe, group: 'core', ownerOnly: true },
+  { to: 'employers', label: 'Employers', icon: Handshake, group: 'core', ownerOnly: true },
   { to: 'employees', label: 'Employees', icon: Briefcase, group: 'core' },
   { to: 'users', label: 'Users', icon: Shield, group: 'core' },
   { to: 'accounts', label: 'Accounts', icon: Wallet, group: 'finance' },
@@ -68,9 +74,9 @@ export default function AppLayout() {
 
   const menuPanelRef = useRef(null);
 
-  // Agent: Dashboard, Passports, Candidates only — no Accounts, no Finance
+  // Sub Agent: Dashboard, Passports, Candidates only — no Accounts, no Finance
   const ownerCoreNav    = NAV.filter(n => n.group === 'core')
-  const managerCoreNav  = NAV.filter(n => n.group === 'core' && n.to !== 'users')
+  const managerCoreNav  = NAV.filter(n => n.group === 'core' && n.to !== 'users' && !n.ownerOnly)
   const agentNav        = NAV.filter(n => ['dashboard', 'candidates', 'passports'].includes(n.to))
   const assistantNav    = NAV.filter(n => ['dashboard', 'candidates', 'passports', 'visa'].includes(n.to))
   const agentBottom     = BOTTOM_NAV.filter(n => ['dashboard', 'passports', 'candidates'].includes(n.to))
