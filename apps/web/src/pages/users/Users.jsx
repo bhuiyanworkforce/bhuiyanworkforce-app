@@ -5,6 +5,16 @@ import { ListSkeleton } from '../../components/Skeleton'
 
 const APP_ROLES = ['manager', 'agent', 'assistant']
 
+// The stored role value is still literally 'agent' (sub-agent portal login) —
+// only the label shown to people has changed, now that "Agent" means the
+// international-intermediary business entity elsewhere in the app.
+const ROLE_LABELS = {
+  owner:     'Owner',
+  manager:   'Manager',
+  agent:     'Sub Agent',
+  assistant: 'Assistant',
+}
+
 const ROLE_STYLES = {
   owner:     'bg-violet-500/15 text-violet-400',
   manager:   'bg-indigo-500/15 text-indigo-400',
@@ -121,7 +131,7 @@ function CreateUserModal({ onClose, onSaved }) {
               className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500"
             >
               {APP_ROLES.map(r => (
-                <option key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</option>
+                <option key={r} value={r}>{ROLE_LABELS[r] || r}</option>
               ))}
             </select>
           </label>
@@ -186,7 +196,7 @@ function ChangeRoleModal({ user, onClose, onSaved }) {
               className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500"
             >
               {APP_ROLES.map(r => (
-                <option key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</option>
+                <option key={r} value={r}>{ROLE_LABELS[r] || r}</option>
               ))}
             </select>
           </label>
@@ -375,8 +385,8 @@ export default function UsersPage() {
 
                 {/* Right: role badge + delete */}
                 <div className="flex items-center gap-2 flex-none ml-2">
-                  <span className={`text-xs font-bold px-2.5 py-1 rounded-full capitalize ${ROLE_STYLES[user.role] || 'bg-slate-700 text-slate-300'}`}>
-                    {user.role || 'no role'}
+                  <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${ROLE_STYLES[user.role] || 'bg-slate-700 text-slate-300'}`}>
+                    {ROLE_LABELS[user.role] || user.role || 'No role'}
                   </span>
                   {user.role !== 'owner' && (
                     <button
