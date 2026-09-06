@@ -7,19 +7,19 @@ export default function AddCandidateModal({ open, onClose, onSaved }) {
   const [agents, setAgents] = useState([])
   const [form, setForm] = useState({
     full_name: '', phone: '', nationality: 'Bangladeshi',
-    address: '', date_of_birth: '', agent_id: ''
+    address: '', date_of_birth: '', sub_agent_id: ''
   })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [duplicate, setDuplicate] = useState(null)
 
   useEffect(() => {
-    supabase.from('agents').select('id, full_name').order('full_name')
+    supabase.from('sub_agents').select('id, full_name').order('full_name')
       .then(({ data }) => setAgents(data || []))
   }, [])
 
   function reset() {
-    setForm({ full_name: '', phone: '', nationality: 'Bangladeshi', address: '', date_of_birth: '', agent_id: '' })
+    setForm({ full_name: '', phone: '', nationality: 'Bangladeshi', address: '', date_of_birth: '', sub_agent_id: '' })
     setError('')
     setDuplicate(null)
   }
@@ -34,7 +34,7 @@ export default function AddCandidateModal({ open, onClose, onSaved }) {
       full_name: form.full_name, phone: form.phone,
       nationality: form.nationality, address: form.address,
       date_of_birth: form.date_of_birth || null,
-      agent_id: form.agent_id || null, created_by: user.id,
+      sub_agent_id: form.sub_agent_id || null, created_by: user.id,
     })
     if (error) { setError(error.message); setSaving(false) }
     else { reset(); onSaved() }
@@ -142,12 +142,12 @@ export default function AddCandidateModal({ open, onClose, onSaved }) {
         {field('Address', 'address')}
         {field('Date of Birth', 'date_of_birth', 'date')}
         <div>
-          <label htmlFor="candidate-field-agent_id" className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-1.5">
-            Assign to Agent <span className="text-slate-600 font-normal">(optional)</span>
+          <label htmlFor="candidate-field-sub_agent_id" className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-1.5">
+            Assign to Sub Agent <span className="text-slate-600 font-normal">(optional)</span>
           </label>
-          <select id="candidate-field-agent_id" value={form.agent_id} onChange={e => setForm(f => ({ ...f, agent_id: e.target.value }))}
+          <select id="candidate-field-sub_agent_id" value={form.sub_agent_id} onChange={e => setForm(f => ({ ...f, sub_agent_id: e.target.value }))}
             className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm text-slate-100 focus:outline-none focus:border-indigo-500">
-            <option value="">No agent assigned</option>
+            <option value="">No sub agent assigned</option>
             {agents.map(a => <option key={a.id} value={a.id}>{a.full_name}</option>)}
           </select>
         </div>

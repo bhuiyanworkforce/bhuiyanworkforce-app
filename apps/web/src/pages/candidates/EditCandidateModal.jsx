@@ -10,7 +10,7 @@ export default function EditCandidateModal({ candidate, onClose, onSaved }) {
     nationality:   candidate.nationality   || 'Bangladeshi',
     address:       candidate.address       || '',
     date_of_birth: candidate.date_of_birth || '',
-    agent_id:      candidate.agent_id      || '',
+    sub_agent_id:      candidate.sub_agent_id      || '',
   })
   const [agents, setAgents]   = useState([])
   const [saving, setSaving]   = useState(false)
@@ -25,7 +25,7 @@ export default function EditCandidateModal({ candidate, onClose, onSaved }) {
   }, [onClose])
 
   useEffect(() => {
-    supabase.from('agents').select('id, full_name').order('full_name')
+    supabase.from('sub_agents').select('id, full_name').order('full_name')
       .then(({ data }) => setAgents(data || []))
   }, [])
 
@@ -34,7 +34,7 @@ export default function EditCandidateModal({ candidate, onClose, onSaved }) {
     setSaving(true)
     const { error: err } = await supabase
       .from('candidates')
-      .update({ ...form, name: form.full_name, agent_id: form.agent_id || null })
+      .update({ ...form, name: form.full_name, sub_agent_id: form.sub_agent_id || null })
       .eq('id', candidate.id)
     if (err) { setError(err.message); setSaving(false); return }
     onSaved({ ...candidate, ...form })
@@ -103,18 +103,18 @@ export default function EditCandidateModal({ candidate, onClose, onSaved }) {
           {/* FIX L63: label associated via htmlFor + id */}
           <div>
             <label
-              htmlFor="edit-candidate-agent_id"
+              htmlFor="edit-candidate-sub_agent_id"
               className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-1.5"
             >
               Agent
             </label>
             <select
-              id="edit-candidate-agent_id"
-              value={form.agent_id}
-              onChange={e => set('agent_id', e.target.value)}
+              id="edit-candidate-sub_agent_id"
+              value={form.sub_agent_id}
+              onChange={e => set('sub_agent_id', e.target.value)}
               className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm text-slate-100 focus:outline-none focus:border-emerald-500"
             >
-              <option value="">No agent</option>
+              <option value="">No sub agent</option>
               {agents.map(a => <option key={a.id} value={a.id}>{a.full_name}</option>)}
             </select>
           </div>
@@ -141,7 +141,7 @@ EditCandidateModal.propTypes = {
     nationality:   PropTypes.string,
     address:       PropTypes.string,
     date_of_birth: PropTypes.string,
-    agent_id:      PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+    sub_agent_id:      PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
   }).isRequired,
   onClose: PropTypes.func.isRequired,
   onSaved: PropTypes.func.isRequired,

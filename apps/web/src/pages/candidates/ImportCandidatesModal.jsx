@@ -94,7 +94,7 @@ export default function ImportCandidatesModal({ open, onClose, onImported }) {
         if (key) existingByPhone.set(key, c)
       }
 
-      const { data: agents } = await supabase.from('agents').select('id, full_name')
+      const { data: agents } = await supabase.from('sub_agents').select('id, full_name')
       const agentByName = new Map((agents || []).map(a => [normalizeHeader(a.full_name), a.id]))
 
       const parsed = raw.map((row, i) => {
@@ -104,8 +104,8 @@ export default function ImportCandidatesModal({ open, onClose, onImported }) {
         const address = String(findField(row, 'address') || '').trim() || null
         const date_of_birth = toDateString(findField(row, 'date_of_birth'))
         const agentNameRaw = String(findField(row, 'agent') || '').trim()
-        const agent_id = agentNameRaw ? agentByName.get(normalizeHeader(agentNameRaw)) || null : null
-        const agentUnmatched = agentNameRaw && !agent_id
+        const sub_agent_id = agentNameRaw ? agentByName.get(normalizeHeader(agentNameRaw)) || null : null
+        const agentUnmatched = agentNameRaw && !sub_agent_id
 
         const duplicate = phone ? existingByPhone.get(phone) : null
 
@@ -117,7 +117,7 @@ export default function ImportCandidatesModal({ open, onClose, onImported }) {
 
         return {
           rowNumber: i + 2, // +2 accounts for header row + 1-indexing, matches what they'd see in Excel
-          full_name, phone, nationality, address, date_of_birth, agent_id,
+          full_name, phone, nationality, address, date_of_birth, sub_agent_id,
           status, reason,
         }
       })
@@ -158,7 +158,7 @@ export default function ImportCandidatesModal({ open, onClose, onImported }) {
         nationality: row.nationality,
         address: row.address,
         date_of_birth: row.date_of_birth,
-        agent_id: row.agent_id,
+        sub_agent_id: row.sub_agent_id,
         created_by: user.id,
       })
       if (error) {

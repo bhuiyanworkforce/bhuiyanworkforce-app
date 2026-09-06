@@ -562,8 +562,8 @@ export default function CandidateDetail({ candidate: initialCandidate, onClose, 
             {candidate.address && (
               <p className="text-slate-500 text-xs mt-1">{candidate.address}</p>
             )}
-            {candidate.agents?.full_name && (
-              <p className="text-indigo-400 text-xs font-semibold mt-1">Agent: {candidate.agents.full_name}</p>
+            {candidate.sub_agents?.full_name && (
+              <p className="text-indigo-400 text-xs font-semibold mt-1">Sub Agent: {candidate.sub_agents.full_name}</p>
             )}
           </div>
 

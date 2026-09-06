@@ -85,7 +85,7 @@ export default function Candidates() {
     try {
       let query = supabase
         .from('candidates')
-        .select('*, agents(full_name), job_categories(name, icon, color)')
+        .select('*, sub_agents(full_name), job_categories(name, icon, color)')
         .order('created_at', { ascending: false })
         .range(newOffset, newOffset + PAGE_SIZE - 1)
 
@@ -225,8 +225,8 @@ export default function Candidates() {
                         <div className="flex-1 min-w-0">
                           <p className="text-slate-200 text-sm font-semibold truncate">{c.full_name}</p>
                           <p className="text-slate-500 text-xs">{c.phone} · {c.nationality}</p>
-                          {c.agents?.full_name && (
-                            <p className="text-indigo-400 text-xs mt-0.5">Agent: {c.agents.full_name}</p>
+                          {c.sub_agents?.full_name && (
+                            <p className="text-indigo-400 text-xs mt-0.5">Sub Agent: {c.sub_agents.full_name}</p>
                           )}
                         </div>
                         <div className="flex flex-col items-end gap-1.5 flex-none">
