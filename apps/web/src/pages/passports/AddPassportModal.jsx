@@ -114,7 +114,7 @@ export default function AddPassportModal({ open, onClose, onSaved }) {
           <label htmlFor="current_location" className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-1.5">Current Location</label>
           <select id="current_location" value={form.current_location} onChange={e => set('current_location', e.target.value)}
             className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm text-slate-100 focus:outline-none focus:border-indigo-500">
-            {['Office', 'Embassy', 'Agent', 'Candidate', 'Other'].map(l => (
+            {['Office', 'Embassy', 'Sub Agent', 'Candidate', 'Other'].map(l => (
               <option key={l} value={l}>{l}</option>
             ))}
           </select>

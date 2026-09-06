@@ -266,7 +266,7 @@ export default function PassportDetail({ passport: initialPassport, onClose, onU
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col gap-3">
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-bold text-slate-300">Next Action</h3>
-                <span className="text-xs text-slate-500">📧 Agent notified by email</span>
+                <span className="text-xs text-slate-500">📧 Sub agent notified by email</span>
               </div>
               {showNote && (
                 <textarea value={note} onChange={e => setNote(e.target.value)} placeholder="Add a note (optional)..." rows={3}
