@@ -9,7 +9,7 @@ export function safeFloat(value) {
 // Single source of truth — used by both the DB insert and the live preview
 // so the two can never drift out of sync.
 
-export function calcAgentNet({ base_amount, commission_amount, allowance, overtime, bonus, deductions }) {
+export function calcSubAgentNet({ base_amount, commission_amount, allowance, overtime, bonus, deductions }) {
   return (
     safeFloat(base_amount) +
     safeFloat(commission_amount) +
