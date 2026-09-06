@@ -55,7 +55,7 @@ export default function Dashboard() {
         supabase.from('visa_applications').select('*', { count: 'exact', head: true })
           .not('status', 'in', '("approved","rejected","cancelled")'),
         supabase.from('candidates').select('*', { count: 'exact', head: true }).is('archived_at', null),
-        supabase.from('agents').select('*', { count: 'exact', head: true }),
+        supabase.from('sub_agents').select('*', { count: 'exact', head: true }),
         supabase.from('passports').select('status'),
         supabase.from('passports')
           .select('passport_no, expiry_date, candidates(full_name)')
@@ -161,7 +161,7 @@ export default function Dashboard() {
       { label: 'Outstanding', value: '৳' + stats.outstanding.toLocaleString(),  icon: Wallet,     color: 'from-red-500 to-rose-600'     },
     ] : [
       { label: 'Candidates', value: stats.totalCandidates, icon: Users,      color: 'from-emerald-500 to-teal-600' },
-      { label: 'Agents',     value: stats.totalAgents,     icon: UserCircle, color: 'from-cyan-500 to-blue-600'   },
+      { label: 'Sub Agents',     value: stats.totalAgents,     icon: UserCircle, color: 'from-cyan-500 to-blue-600'   },
     ]),
   ]
 
