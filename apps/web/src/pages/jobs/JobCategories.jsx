@@ -72,7 +72,7 @@ export default function JobCategories() {
     if (catId === '__unassigned__') {
       let q = supabase
         .from('candidates')
-        .select('*, agents(full_name)')
+        .select('*, sub_agents(full_name)')
         .is('job_category_id', null)
         .is('archived_at', null)
         .order('created_at', { ascending: false })
@@ -82,7 +82,7 @@ export default function JobCategories() {
     } else {
       let q = supabase
         .from('candidates')
-        .select('*, agents(full_name), job_categories(name, icon, color)')
+        .select('*, sub_agents(full_name), job_categories(name, icon, color)')
         .eq('job_category_id', catId)
         .is('archived_at', null)
         .order('created_at', { ascending: false })
@@ -253,8 +253,8 @@ export default function JobCategories() {
                             <span className={`text-xs px-2 py-0.5 rounded-full ${stageColor(c.status)}`}>
                               {stageLabel(c.status)}
                             </span>
-                            {c.agents?.full_name && (
-                              <span className="text-xs text-slate-600 truncate">via {c.agents.full_name}</span>
+                            {c.sub_agents?.full_name && (
+                              <span className="text-xs text-slate-600 truncate">via {c.sub_agents.full_name}</span>
                             )}
                           </div>
                         </div>
