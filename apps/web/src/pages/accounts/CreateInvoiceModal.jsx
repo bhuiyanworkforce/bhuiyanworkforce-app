@@ -7,7 +7,7 @@ export default function CreateInvoiceModal({ onClose, onSaved }) {
   const [candidates, setCandidates] = useState([])
   const [agents, setAgents] = useState([])
   const [form, setForm] = useState({
-    candidate_id: '', agent_id: '', due_date: '', notes: '',
+    candidate_id: '', sub_agent_id: '', due_date: '', notes: '',
   })
   const [items, setItems] = useState([
     { id: crypto.randomUUID(), description: '', quantity: 1, unit_price: '' }
@@ -17,8 +17,8 @@ export default function CreateInvoiceModal({ onClose, onSaved }) {
 
   useEffect(() => {
     Promise.all([
-      supabase.from('candidates').select('id, full_name, agent_id').is('archived_at', null).order('full_name'),
-      supabase.from('agents').select('id, full_name').order('full_name'),
+      supabase.from('candidates').select('id, full_name, sub_agent_id').is('archived_at', null).order('full_name'),
+      supabase.from('sub_agents').select('id, full_name').order('full_name'),
     ]).then(([{ data: cands }, { data: ags }]) => {
       setCandidates(cands || [])
       setAgents(ags || [])
@@ -31,7 +31,7 @@ export default function CreateInvoiceModal({ onClose, onSaved }) {
     setForm(f => ({
       ...f,
       candidate_id: candidateId,
-      agent_id: candidate?.agent_id || f.agent_id
+      sub_agent_id: candidate?.sub_agent_id || f.sub_agent_id
     }))
   }
 
@@ -79,7 +79,7 @@ export default function CreateInvoiceModal({ onClose, onSaved }) {
       .insert({
         invoice_no: invoiceNo,
         candidate_id: form.candidate_id,
-        agent_id: form.agent_id || null,
+        sub_agent_id: form.sub_agent_id || null,
         subtotal,
         total: subtotal,
         due_date: form.due_date || null,
@@ -146,18 +146,18 @@ export default function CreateInvoiceModal({ onClose, onSaved }) {
             </select>
           </div>
 
-          {/* Agent */}
+          {/* Sub Agent */}
           <div>
             <label htmlFor="agent-select" className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-1.5">
               Agent <span className="text-slate-600 font-normal">(auto-filled if candidate has agent)</span>
             </label>
             <select
               id="agent-select"
-              value={form.agent_id}
-              onChange={e => setForm(f => ({ ...f, agent_id: e.target.value }))}
+              value={form.sub_agent_id}
+              onChange={e => setForm(f => ({ ...f, sub_agent_id: e.target.value }))}
               className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm text-slate-100 focus:outline-none focus:border-indigo-500"
             >
-              <option value="">No agent</option>
+              <option value="">No sub agent</option>
               {agents.map(a => <option key={a.id} value={a.id}>{a.full_name}</option>)}
             </select>
           </div>
