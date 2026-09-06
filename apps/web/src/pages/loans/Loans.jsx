@@ -10,7 +10,7 @@ import { safeDelete } from '../../lib/utils'
 // STATUS_COLOR is now imported from ../../lib/constants
 
 function AddLoanModal({ onClose, onSaved }) {
-  const [form, setForm] = useState({ agent_id:'', amount:'', issued_date: new Date().toISOString().slice(0,10), due_date:'', purpose:'', notes:'' })
+  const [form, setForm] = useState({ sub_agent_id:'', amount:'', issued_date: new Date().toISOString().slice(0,10), due_date:'', purpose:'', notes:'' })
   const [agents, setAgents] = useState([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -24,11 +24,11 @@ function AddLoanModal({ onClose, onSaved }) {
   }, [onClose])
 
   useEffect(() => {
-    supabase.from('agents').select('id, full_name, profile_id').then(({data})=>setAgents(data||[]))
+    supabase.from('sub_agents').select('id, full_name, profile_id').then(({data})=>setAgents(data||[]))
   }, [])
 
   async function handleSave() {
-    if (!form.agent_id || !form.amount) { setError('Agent and amount required'); return }
+    if (!form.sub_agent_id || !form.amount) { setError('Agent and amount required'); return }
     setSaving(true)
     const { error: err } = await supabase.from('loans').insert({
       ...form, amount: Number.parseFloat(form.amount),
@@ -41,7 +41,7 @@ function AddLoanModal({ onClose, onSaved }) {
     // and submit. Previously user.id threw an uncaught TypeError in that case.
     const { data: { session } } = await supabase.auth.getSession()
     const user = session?.user
-    const agent = agents.find(a => a.id === form.agent_id)
+    const agent = agents.find(a => a.id === form.sub_agent_id)
     // FIX: Notification should go to the agent whose loan was issued,
     // not the staff member who created it. Use the agent's profile_id so
     // the notification appears in their bell. Fall back to the logged-in
@@ -67,9 +67,9 @@ function AddLoanModal({ onClose, onSaved }) {
         <div className="p-5 pb-24 flex flex-col gap-4">
           {error && <p className="text-red-400 text-sm bg-red-500/10 px-4 py-2 rounded-xl">{error}</p>}
           <label className="flex flex-col gap-1">
-            <span className="text-xs text-slate-500 font-semibold">Agent *</span>
-            <select value={form.agent_id} onChange={e=>set('agent_id',e.target.value)} className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500">
-              <option value="">— Select Agent —</option>
+            <span className="text-xs text-slate-500 font-semibold">Sub Agent *</span>
+            <select value={form.sub_agent_id} onChange={e=>set('sub_agent_id',e.target.value)} className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500">
+              <option value="">— Select Sub Agent —</option>
               {agents.map(a=><option key={a.id} value={a.id}>{a.full_name}</option>)}
             </select>
           </label>
@@ -239,7 +239,7 @@ export default function Loans() {
   const [refreshing, setRefreshing] = useState(false)
 
   const { data: loans, loading, error, refresh } = useSupabaseQuery(
-    () => supabase.from('loans').select('*, agents(id, full_name)').order('created_at', { ascending: false }),
+    () => supabase.from('loans').select('*, sub_agents(id, full_name)').order('created_at', { ascending: false }),
     [],
     { fallback: [] }
   )
@@ -322,7 +322,7 @@ export default function Loans() {
                   <div className="px-4 py-4">
                     <div className="flex items-center justify-between mb-2">
                       <div>
-                        <p className="text-slate-200 text-sm font-semibold">{l.agents?.full_name || '—'}</p>
+                        <p className="text-slate-200 text-sm font-semibold">{l.sub_agents?.full_name || '—'}</p>
                         <p className="text-slate-500 text-xs">
                           {l.issued_date ? new Date(l.issued_date).toLocaleDateString() : '—'}
                           {l.due_date ? ' · Due: ' + new Date(l.due_date).toLocaleDateString() : ''}
