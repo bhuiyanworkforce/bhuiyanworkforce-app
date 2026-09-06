@@ -13,7 +13,7 @@ export default function Payroll() {
       <h1 className="text-2xl font-extrabold text-slate-100">Payroll</h1>
 
       <div className="flex gap-1 bg-slate-900 border border-slate-800 rounded-xl p-1">
-        {[['agent','Agent Payroll'],['employee','Employee Payroll']].map(([key, label]) => (
+        {[['agent','Sub Agent Payroll'],['employee','Employee Payroll']].map(([key, label]) => (
           <button key={key} onClick={() => setTab(key)}
             className={`flex-1 py-2 rounded-lg text-sm font-bold transition-colors ${tab === key ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}>
             {label}

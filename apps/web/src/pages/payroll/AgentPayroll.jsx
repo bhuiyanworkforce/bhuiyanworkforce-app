@@ -2,7 +2,7 @@ import PropTypes from 'prop-types'
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../../lib/supabase'
 import { Plus, X } from 'lucide-react'
-import { calcAgentNet } from '../../lib/utils'
+import { calcSubAgentNet } from '../../lib/utils'
 import { Spinner } from '../../components/Skeleton'
 
 const PAGE_SIZE = 20
@@ -12,7 +12,7 @@ const PAGE_SIZE = 20
 export function AddAgentPayrollModal({ onClose, onSaved }) {
   const [agents, setAgents] = useState([])
   const [form, setForm] = useState({
-    agent_id: '', period_start: '', period_end: '',
+    sub_agent_id: '', period_start: '', period_end: '',
     base_amount: '', commission_amount: '0', allowance: '0',
     overtime: '0', bonus: '0', deductions: '0',
     payment_method: 'cash', status: 'pending',
@@ -28,7 +28,7 @@ export function AddAgentPayrollModal({ onClose, onSaved }) {
   }, [onClose])
 
   useEffect(() => {
-    supabase.from('agents').select('id, full_name').order('full_name')
+    supabase.from('sub_agents').select('id, full_name').order('full_name')
       .then(({ data }) => setAgents(data || []))
   }, [])
 
@@ -37,16 +37,16 @@ export function AddAgentPayrollModal({ onClose, onSaved }) {
   // constraint on that column. Every submission with it left blank failed
   // with a raw database error instead of a clear message asking for it.
   async function handleSave() {
-    if (!form.agent_id || !form.period_start || !form.period_end || !form.base_amount) {
+    if (!form.sub_agent_id || !form.period_start || !form.period_end || !form.base_amount) {
       setError('Agent, period start, period end, and base amount are required'); return
     }
     if (form.period_end < form.period_start) {
       setError('Period end cannot be before period start'); return
     }
     setSaving(true)
-    const net_amount = calcAgentNet(form)
+    const net_amount = calcSubAgentNet(form)
     const { error: err } = await supabase.from('payroll').insert({
-      agent_id: form.agent_id,
+      sub_agent_id: form.sub_agent_id,
       period_start: form.period_start,
       period_end: form.period_end,
       base_amount:       Number(form.base_amount)       || 0,
@@ -65,22 +65,22 @@ export function AddAgentPayrollModal({ onClose, onSaved }) {
     onSaved()
   }
 
-  const net = calcAgentNet(form)
+  const net = calcSubAgentNet(form)
 
   return (
     <div className="fixed inset-0 z-50 bg-black/70 flex items-end justify-center">
       <div className="bg-[#0D1626] border border-slate-800 rounded-t-2xl w-full max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800 sticky top-0 bg-[#0D1626]">
-          <h2 className="text-slate-100 font-bold text-lg">Add Agent Payroll</h2>
+          <h2 className="text-slate-100 font-bold text-lg">Add Sub Agent Payroll</h2>
           <button onClick={onClose}><X size={20} className="text-slate-400"/></button>
         </div>
         <div className="p-5 pb-24 flex flex-col gap-4">
           {error && <p className="text-red-400 text-sm bg-red-500/10 px-4 py-2 rounded-xl">{error}</p>}
           <label className="flex flex-col gap-1">
-            <span className="text-xs text-slate-500 font-semibold">Agent *</span>
-            <select value={form.agent_id} onChange={e => set('agent_id', e.target.value)}
+            <span className="text-xs text-slate-500 font-semibold">Sub Agent *</span>
+            <select value={form.sub_agent_id} onChange={e => set('sub_agent_id', e.target.value)}
               className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500">
-              <option value="">— Select Agent —</option>
+              <option value="">— Select Sub Agent —</option>
               {agents.map(a => <option key={a.id} value={a.id}>{a.full_name}</option>)}
             </select>
           </label>
@@ -160,7 +160,7 @@ export function AgentPayrollDetail({ record, onClose, onUpdated }) {
     const { error: expenseErr } = await supabase.from('expenses').insert({
       date: new Date().toISOString().split('T')[0],
       category: 'salary',
-      description: `Agent payroll — ${record.agents?.full_name || 'agent'}`,
+      description: `Agent payroll — ${record.sub_agents?.full_name || 'agent'}`,
       amount: net,
       payment_method: record.payment_method || 'cash',
     })
@@ -179,7 +179,7 @@ export function AgentPayrollDetail({ record, onClose, onUpdated }) {
       <div className="sticky top-0 z-10 bg-[#080F1E] border-b border-slate-800 px-4 py-3 flex items-center gap-3">
         <button onClick={onClose} className="text-slate-400 hover:text-slate-200"><X size={22}/></button>
         <div className="flex-1 min-w-0">
-          <p className="text-slate-100 font-bold text-sm">{record.agents?.full_name}</p>
+          <p className="text-slate-100 font-bold text-sm">{record.sub_agents?.full_name}</p>
           <p className="text-slate-500 text-xs">
             {record.period_start ? new Date(record.period_start).toLocaleDateString() : '—'}
             {record.period_end ? ' → ' + new Date(record.period_end).toLocaleDateString() : ''}
@@ -247,7 +247,7 @@ AgentPayrollDetail.propTypes = {
   onUpdated: PropTypes.func.isRequired,
 }
 
-// ─── Agent Payroll Tab ────────────────────────────────────────────────────────
+// ─── Sub Agent Payroll Tab ────────────────────────────────────────────────────────
 
 export default function AgentPayrollTab() {
   const [payrolls, setPayrolls]       = useState([])
@@ -265,7 +265,7 @@ export default function AgentPayrollTab() {
     try {
       let q = supabase
         .from('payroll')
-        .select('*, agents(full_name)', { count: 'exact' })
+        .select('*, sub_agents(full_name)', { count: 'exact' })
         .order('period_start', { ascending: false })
         .range(newOffset, newOffset + PAGE_SIZE - 1)
       if (statusFilter !== 'all') q = q.eq('status', statusFilter)
@@ -330,7 +330,7 @@ export default function AgentPayrollTab() {
                       className={`w-full text-left px-4 py-4 active:bg-slate-800 transition-colors ${i < payrolls.length - 1 ? 'border-b border-slate-800' : ''}`}>
                       <div className="flex justify-between items-start">
                         <div>
-                          <p className="text-slate-200 text-sm font-semibold">{p.agents?.full_name || '—'}</p>
+                          <p className="text-slate-200 text-sm font-semibold">{p.sub_agents?.full_name || '—'}</p>
                           <p className="text-slate-500 text-xs">
                             {p.period_start ? new Date(p.period_start).toLocaleDateString() : '—'}
                             {p.period_end ? ' → ' + new Date(p.period_end).toLocaleDateString() : ''}
