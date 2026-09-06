@@ -119,7 +119,7 @@ app.post('/status-update', async (c) => {
 
     // phone removed — fetched but never used
     const { data: passport } = await supabase.from('passports')
-      .select('passport_no, status, candidates(full_name, agents(full_name, email, profile_id))')
+      .select('passport_no, status, candidates(full_name, sub_agents(full_name, email, profile_id))')
       .eq('id', passport_id).single()
 
     if (!passport) return c.json({ error: 'Passport not found' }, 404)
