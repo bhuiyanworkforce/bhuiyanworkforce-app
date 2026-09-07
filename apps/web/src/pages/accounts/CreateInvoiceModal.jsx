@@ -149,7 +149,7 @@ export default function CreateInvoiceModal({ onClose, onSaved }) {
           {/* Sub Agent */}
           <div>
             <label htmlFor="agent-select" className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-1.5">
-              Agent <span className="text-slate-600 font-normal">(auto-filled if candidate has agent)</span>
+              Sub Agent <span className="text-slate-600 font-normal">(auto-filled if candidate has one)</span>
             </label>
             <select
               id="agent-select"
