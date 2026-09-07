@@ -80,7 +80,7 @@ function exportCSV(rows, filename) {
 
 async function exportInvoicesCSV() {
   const { data } = await supabase.from('invoices').select('invoice_no, status, total, issued_at, due_date, candidates(full_name), sub_agents(full_name)').order('issued_at', { ascending: false })
-  exportCSV((data||[]).map(i => ({ Invoice: i.invoice_no, Candidate: i.candidates?.full_name||'', Sub Agent: i.sub_agents?.full_name||'', Amount: i.total||0, Status: i.status, 'Issue Date': i.issued_at?.split('T')[0]||'', 'Due Date': i.due_date||'' })), 'invoices')
+  exportCSV((data||[]).map(i => ({ Invoice: i.invoice_no, Candidate: i.candidates?.full_name||'', 'Sub Agent': i.sub_agents?.full_name||'', Amount: i.total||0, Status: i.status, 'Issue Date': i.issued_at?.split('T')[0]||'', 'Due Date': i.due_date||'' })), 'invoices')
 }
 
 async function exportPassportsCSV() {
@@ -268,14 +268,14 @@ export default function Reports() {
     setShowCustom(false)
   }
 
-  function exportAgentsCSV() {
+  function exportSubAgentsCSV() {
     exportCSV(data.agentPerformance.map(a => ({
-      Sub 'Sub Agent': a.full_name,
+      'Sub Agent': a.full_name,
       'Commission Rate': a.commission_rate + '%',
       'Total Revenue': a.revenue,
       'Commission Due': a.commission,
       Invoices: a.invoiceCount,
-    })), 'agent-performance')
+    })), 'sub-agent-performance')
   }
 
   function exportProfitCSV() {
@@ -462,7 +462,7 @@ export default function Reports() {
               <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
                 <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800">
                   <h2 className="text-sm font-bold text-slate-300">Sub Agent Performance</h2>
-                  <button onClick={exportAgentsCSV} className="flex items-center gap-1 text-indigo-400 text-xs font-semibold"><Download size={13}/> CSV</button>
+                  <button onClick={exportSubAgentsCSV} className="flex items-center gap-1 text-indigo-400 text-xs font-semibold"><Download size={13}/> CSV</button>
                 </div>
                 <ul>
                   {data.agentPerformance.map((agent, i) => (
@@ -554,7 +554,7 @@ export default function Reports() {
             {[
               { label: 'Export All Invoices',         desc: 'Full invoice history with amounts',                icon: Wallet,     fn: exportInvoicesCSV,  color: 'from-indigo-500 to-violet-600' },
               { label: 'Export Passports',            desc: 'All passport records and status',                  icon: Stamp,      fn: exportPassportsCSV, color: 'from-amber-500 to-orange-600'  },
-              { label: 'Export Sub Agent Report',         desc: 'Performance and commission data',                  icon: Users,      fn: exportAgentsCSV,    color: 'from-pink-500 to-rose-600'     },
+              { label: 'Export Sub Agent Report',         desc: 'Performance and commission data',                  icon: Users,      fn: exportSubAgentsCSV,    color: 'from-pink-500 to-rose-600'     },
               { label: 'Export Profit per Candidate', desc: 'Revenue, commission, refunds, net profit',         icon: DollarSign, fn: exportProfitCSV,    color: 'from-emerald-500 to-teal-600'  },
               { label: 'Full Backup (JSON)',          desc: 'All data including employees & visa applications',  icon: Download,   fn: exportFullBackup,   color: 'from-slate-500 to-slate-600'   },
             ].map(({ label, desc, icon: Icon, fn, color }) => (
