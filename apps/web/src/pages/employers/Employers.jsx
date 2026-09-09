@@ -39,10 +39,16 @@ function AddEmployerModal({ onClose, onSaved }) {
     if (!form.company_name.trim()) { setError('Company name is required'); return }
     setSaving(true)
     const { data: { session } } = await supabase.auth.getSession()
+    const user = session?.user
+    if (!user) {
+      setError('Your session has expired. Please log in again.')
+      setSaving(false)
+      return
+    }
     const { error: err } = await supabase.from('employers').insert({
       ...form,
       notes: form.notes || null,
-      created_by: session?.user?.id ?? null,
+      created_by: user.id,
     })
     if (err) { setError(err.message); setSaving(false); return }
     onSaved()
