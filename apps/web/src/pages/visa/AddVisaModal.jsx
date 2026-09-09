@@ -23,9 +23,21 @@ export default function AddVisaModal({ onClose, onSaved }) {
       .then(({data})=>setPassports(data||[]))
   }, [form.candidate_id])
 
+  // Fix: this never set created_by, unlike every other "create a record"
+  // flow in the app. Left every visa application permanently unattributed
+  // — no audit trail of who created it, and (once assistant permissions
+  // are scoped to "your own records") it would have made every visa
+  // application an assistant created immediately un-editable by them.
   async function handleSave() {
     if (!form.candidate_id || !form.country) { setError('Candidate and country required'); return }
     setSaving(true)
+    const { data: { session } } = await supabase.auth.getSession()
+    const user = session?.user
+    if (!user) {
+      setError('Your session has expired. Please log in again.')
+      setSaving(false)
+      return
+    }
     const { error: err } = await supabase.from('visa_applications').insert({
       candidate_id: form.candidate_id,
       passport_id: form.passport_id||null,
@@ -34,6 +46,7 @@ export default function AddVisaModal({ onClose, onSaved }) {
       deadline: form.deadline||null,
       notes: form.notes||null,
       status: 'draft',
+      created_by: user.id,
     })
     if (err) { setError(err.message); setSaving(false); return }
     onSaved()
