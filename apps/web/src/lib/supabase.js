@@ -26,18 +26,23 @@ if (!supabaseUrl || !supabaseAnonKey) {
 //   2. Added autoRefreshToken logic (below) to stop the proactive refresh.
 // ──────────────────────────────────────────────────────────────────────────────
 const FETCH_TIMEOUT_MS = 6_000
+// Storage uploads (passport scans, documents, avatars) legitimately take much
+// longer than a 6s API call on 3G/4G — aborting them at 6s made uploads fail.
+const UPLOAD_TIMEOUT_MS = 120_000
 
 function fetchWithTimeout(url, options = {}) {
   const controller = new AbortController()
 
+  const isStorage = String(url).includes('/storage/v1/')
   const timer = setTimeout(() => {
     controller.abort()
     console.warn('[supabase] Request timed out:', url)
-  }, FETCH_TIMEOUT_MS)
+  }, isStorage ? UPLOAD_TIMEOUT_MS : FETCH_TIMEOUT_MS)
 
   const existingSignal = options.signal
   if (existingSignal) {
-    existingSignal.addEventListener('abort', () => controller.abort(), { once: true })
+    if (existingSignal.aborted) controller.abort()
+    else existingSignal.addEventListener('abort', () => controller.abort(), { once: true })
   }
 
   return fetch(url, { ...options, signal: controller.signal })
