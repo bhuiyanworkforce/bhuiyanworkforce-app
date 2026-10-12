@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import { X, Download, CheckCircle, Pencil, XCircle, Plus } from 'lucide-react'
 import { Spinner } from '../../components/Skeleton'
+import { downloadInvoicePdf, printInvoiceFallback } from '../../lib/invoicePdf'
 
 const PAYMENT_METHODS = ['cash', 'bank_transfer', 'cheque', 'bkash', 'nagad', 'other']
 
@@ -11,29 +12,6 @@ const STATUS_COLOR = {
   partial:   'bg-amber-500/15 text-amber-400',
   paid:      'bg-emerald-500/15 text-emerald-400',
   cancelled: 'bg-slate-500/15 text-slate-400',
-}
-
-// Fix: item.description, invoice.notes, and other free-text fields were
-// being dropped straight into an HTML string for the print window with no
-// escaping — any "<" or "&" in a description would be interpreted as
-// markup instead of shown as text (and it's the kind of gap that turns
-// serious the moment this text ever comes from a less-trusted source, like
-// OCR extraction). Escape everything before it goes into the template.
-function escapeHtml(value) {
-  return String(value ?? '')
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#39;')
-}
-
-function buildItemRows(items) {
-  return items.map(item => {
-    const unitPrice = (Number.parseFloat(item.unit_price) || 0).toLocaleString()
-    const total = (Number.parseFloat(item.total) || 0).toLocaleString()
-    return `<tr><td>${escapeHtml(item.description)}</td><td>${escapeHtml(item.quantity)}</td><td>৳${unitPrice}</td><td>৳${total}</td></tr>`
-  }).join('')
 }
 
 export default function InvoiceDetail({ invoice: initialInvoice, onClose, onUpdated }) {
@@ -50,6 +28,8 @@ export default function InvoiceDetail({ invoice: initialInvoice, onClose, onUpda
   const [editItems, setEditItems] = useState([])
   const [payForm, setPayForm] = useState({ amount: '', method: 'cash', notes: '' })
   const [paying, setPaying] = useState(false)
+  const [pdfBusy, setPdfBusy] = useState(false)
+  const [people, setPeople] = useState({}) // profile id → { full_name, role }
 
   useEffect(() => {
     async function load() {
@@ -60,6 +40,14 @@ export default function InvoiceDetail({ invoice: initialInvoice, onClose, onUpda
         ])
         setItems(it || [])
         setPayments(pay || [])
+
+        // Names for "Issued by" / "Received by". Best-effort: a failure here
+        // must never block the invoice from opening.
+        const ids = [...new Set([invoice.created_by, ...(pay || []).map(p => p.received_by)].filter(Boolean))]
+        if (ids.length) {
+          const { data: profs } = await supabase.from('profiles').select('id, full_name, role').in('id', ids)
+          setPeople(Object.fromEntries((profs || []).map(p => [p.id, p])))
+        }
       } catch (err) {
         console.error('[InvoiceDetail] load failed:', err)
       } finally {
@@ -134,7 +122,7 @@ export default function InvoiceDetail({ invoice: initialInvoice, onClose, onUpda
       is_read: false,
     })
 
-    setPayments(prev => [{ ...payForm, amount, receipt_no: receiptNo, created_at: new Date().toISOString() }, ...prev])
+    setPayments(prev => [{ ...payForm, amount, receipt_no: receiptNo, received_by: user.id, created_at: new Date().toISOString() }, ...prev])
     setInvoice(prev => ({ ...prev, status: newStatus || prev.status, receipt_no: receiptNo || prev.receipt_no }))
     setShowPayment(false)
     setPayForm({ amount: '', method: 'cash', notes: '' })
@@ -213,40 +201,6 @@ export default function InvoiceDetail({ invoice: initialInvoice, onClose, onUpda
     onUpdated('cancelled')
   }
 
-  function buildPrintHtml() {
-    const paidBg = invoice.status === 'paid' ? '#d1fae5' : '#fee2e2'
-    const paidColor = invoice.status === 'paid' ? '#065f46' : '#991b1b'
-    const dueLine = invoice.due_date ? `<p>Due: ${new Date(invoice.due_date).toLocaleDateString()}</p>` : ''
-    const notesLine = invoice.notes ? `<p style="color:#666;font-size:13px;margin-bottom:20px;">Notes: ${escapeHtml(invoice.notes)}</p>` : ''
-    const itemRows = buildItemRows(items)
-
-    return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Invoice ${escapeHtml(invoice.invoice_no)}</title>
-      <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;padding:40px;color:#1a1a2e}
-      .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:40px;border-bottom:3px solid #6366f1;padding-bottom:20px}
-      .company h1{font-size:24px;color:#6366f1;font-weight:900}.company p{color:#666;font-size:13px;margin-top:4px}
-      .invoice-info{text-align:right}.invoice-info h2{font-size:20px;font-weight:800}
-      .candidate{background:#f8f9ff;border-radius:12px;padding:16px;margin-bottom:30px}
-      .candidate h3{font-size:12px;text-transform:uppercase;letter-spacing:.1em;color:#888;margin-bottom:6px}
-      .candidate p{font-size:16px;font-weight:700}
-      table{width:100%;border-collapse:collapse;margin-bottom:24px}
-      th{background:#6366f1;color:white;padding:12px 16px;text-align:left;font-size:12px;text-transform:uppercase}
-      td{padding:12px 16px;border-bottom:1px solid #eee;font-size:14px}
-      .total-row td{background:#6366f1;color:white;font-weight:800;font-size:16px;border:none}
-      .footer{margin-top:40px;text-align:center;color:#999;font-size:12px;border-top:1px solid #eee;padding-top:20px}
-      .status{display:inline-block;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;text-transform:uppercase;
-      background:${paidBg};color:${paidColor}}
-      </style></head><body>
-      <div class="header"><div class="company"><h1>Bhuiyan Books</h1><p>Bhuiyan Workforce Ltd.</p><p>bhuiyanworkforce.com</p></div>
-      <div class="invoice-info"><h2>${escapeHtml(invoice.invoice_no)}</h2><p>Date: ${new Date(invoice.issued_at).toLocaleDateString()}</p>
-      ${dueLine}<br/><span class="status">${escapeHtml(invoice.status)}</span></div></div>
-      <div class="candidate"><h3>Bill To</h3><p>${escapeHtml(invoice.candidates?.full_name) || 'N/A'}</p></div>
-      <table><thead><tr><th>Description</th><th>Qty</th><th>Unit Price</th><th>Total</th></tr></thead><tbody>
-      ${itemRows}
-      <tr class="total-row"><td colspan="3">Total Amount</td><td>৳${(Number.parseFloat(invoice.total)||0).toLocaleString()}</td></tr>
-      </tbody></table>${notesLine}
-      <div class="footer"><p>Thank you for your business — Bhuiyan Workforce Ltd.</p></div></body></html>`
-  }
-
   function addEditItem() {
     setEditItems(prev => [...prev, { description: '', quantity: '1', unit_price: '' }])
   }
@@ -274,15 +228,33 @@ export default function InvoiceDetail({ invoice: initialInvoice, onClose, onUpda
     setShowEdit(true)
   }
 
-  function printInvoice() {
-    const win = window.open('', '_blank')
-    const blob = new Blob([buildPrintHtml()], { type: 'text/html' })
-    const url = URL.createObjectURL(blob)
-    win.location.href = url
-    win.addEventListener('load', () => {
-      win.print()
-      URL.revokeObjectURL(url)
-    })
+  // Builds a real PDF file and downloads it. If this browser can't render
+  // it (rare), fall back to the print window so the user is never stuck.
+  async function downloadPdf() {
+    if (pdfBusy) return
+    setPdfBusy(true)
+    // A payment recorded in this session may be by someone we haven't loaded yet.
+    const known = { ...people }
+    const missing = [...new Set([invoice.created_by, ...payments.map(p => p.received_by)].filter(id => id && !known[id]))]
+    if (missing.length) {
+      const { data: profs } = await supabase.from('profiles').select('id, full_name, role').in('id', missing)
+      for (const p of profs || []) known[p.id] = p
+      setPeople(known)
+    }
+    const data = {
+      invoice,
+      items,
+      payments: payments.map(p => ({ ...p, received_by_name: known[p.received_by]?.full_name || '' })),
+      issuer: known[invoice.created_by] || null,
+    }
+    try {
+      await downloadInvoicePdf(data)
+    } catch (err) {
+      console.error('[InvoiceDetail] PDF generation failed, using print fallback:', err)
+      try { await printInvoiceFallback(data) } catch (e2) { alert(e2.message || 'Could not create the PDF.') }
+    } finally {
+      setPdfBusy(false)
+    }
   }
 
   return (
@@ -293,8 +265,8 @@ export default function InvoiceDetail({ invoice: initialInvoice, onClose, onUpda
           <p className="text-slate-100 font-bold text-sm">{invoice.invoice_no}</p>
           <p className="text-slate-500 text-xs">{invoice.candidates?.full_name}</p>
         </div>
-        <button onClick={printInvoice} className="flex items-center gap-1 bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-2 rounded-xl text-xs font-semibold">
-          <Download size={13} /> PDF
+        <button onClick={downloadPdf} disabled={loading || pdfBusy} className="flex items-center gap-1 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-300 px-3 py-2 rounded-xl text-xs font-semibold">
+          <Download size={13} /> {pdfBusy ? 'Preparing…' : 'PDF'}
         </button>
         {invoice.status !== 'cancelled' && invoice.status !== 'paid' && (
           <button onClick={openEditModal} className="flex items-center gap-1 bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-2 rounded-xl text-xs font-semibold">
@@ -332,6 +304,9 @@ export default function InvoiceDetail({ invoice: initialInvoice, onClose, onUpda
                   style={{ width: `${Math.min(100, (totalPaid / (Number.parseFloat(invoice.total) || 1)) * 100)}%` }} />
               </div>
             </div>
+          )}
+          {people[invoice.created_by]?.full_name && (
+            <p className="text-slate-500 text-xs mb-3">Issued by <span className="text-slate-300 font-semibold">{people[invoice.created_by].full_name}</span></p>
           )}
           {invoice.cancel_reason && (
             <div className="mt-3 bg-red-500/10 rounded-xl p-3">
@@ -382,7 +357,7 @@ export default function InvoiceDetail({ invoice: initialInvoice, onClose, onUpda
                 <li key={p.id || `payment-${i}`} className={`flex items-center justify-between px-4 py-3 ${i < payments.length - 1 ? 'border-b border-slate-800' : ''}`}>
                   <div>
                     <p className="text-slate-200 text-sm font-semibold capitalize">{p.method?.replace('_', ' ')}</p>
-                    <p className="text-slate-500 text-xs">{new Date(p.created_at).toLocaleDateString()}{p.receipt_no ? ` · ${p.receipt_no}` : ''}</p>
+                    <p className="text-slate-500 text-xs">{new Date(p.created_at).toLocaleDateString()}{p.receipt_no ? ` · ${p.receipt_no}` : ''}{people[p.received_by]?.full_name ? ` · by ${people[p.received_by].full_name}` : ''}</p>
                   </div>
                   <p className="text-emerald-400 font-bold text-sm">৳{(Number.parseFloat(p.amount)||0).toLocaleString()}</p>
                 </li>
