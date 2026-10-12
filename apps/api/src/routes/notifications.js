@@ -3,8 +3,20 @@ import { escHtml, isValidEmail } from '../lib/emailUtils.js'
 
 const app = new Hono()
 
+// Constant-time comparison so the secret can't be probed via response timing.
+function safeEqual(a, b) {
+  const len = Math.max(a.length, b.length)
+  let diff = a.length ^ b.length
+  for (let i = 0; i < len; i++) diff |= (a.charCodeAt(i) || 0) ^ (b.charCodeAt(i) || 0)
+  return diff === 0
+}
+
+// FIX: if INTERNAL_SECRET was ever unset, the old check compared against the
+// literal string "Bearer undefined" — anyone sending that header got in.
 function isAuthorized(c) {
-  return c.req.header('Authorization') === `Bearer ${c.env.INTERNAL_SECRET}`
+  const secret = c.env.INTERNAL_SECRET
+  if (!secret) return false
+  return safeEqual(c.req.header('Authorization') ?? '', `Bearer ${secret}`)
 }
 
 // FIX: The previous implementation forwarded raw `html` from the request body

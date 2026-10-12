@@ -54,7 +54,7 @@ app.get('/', async (c) => {
 
   const supabase = getSupabase(c.env)
 
-  const { data: authData, error: authErr } = await supabase.auth.admin.listUsers()
+  const { data: authData, error: authErr } = await supabase.auth.admin.listUsers({ page: 1, perPage: 1000 })
   if (authErr) return c.json({ error: `listUsers failed: ${authErr.message}` }, 500)
 
   const { data: profiles, error: profileErr } = await supabase
@@ -107,8 +107,10 @@ app.post('/', async (c) => {
     email,
     password,
     email_confirm: true, // auto-confirm so they can log in immediately
+    // FIX: role goes in app_metadata — only the service role can write it.
+    // user_metadata is client-editable, so it must never carry privileges.
+    app_metadata: { role },
     user_metadata: {
-      role,
       full_name: full_name?.trim() || null,
     },
   })

@@ -89,11 +89,26 @@ async function sendEmail(env, { to, subject, html }) {
   }
 }
 
+// Roles allowed to move a passport through the workflow. Sub-agents ('agent')
+// and 'client' accounts must never be able to do this.
+const STATUS_ROLES = ['owner', 'manager', 'assistant']
+
 app.post('/status-update', async (c) => {
   const user = await getAuthUser(c)
   if (!user) return c.json({ error: 'Unauthorized' }, 401)
 
-  // FIX: Rate limiting — 10 status updates per user per 60 seconds
+  const token = (c.req.header('Authorization') ?? '').slice(7)
+  const supabase = getSupabase(c.env)
+
+  // FIX: this route uses the service key (bypasses RLS) and previously had NO
+  // role check — any logged-in account, including a sub-agent, could change
+  // any passport's status. Gate on role first.
+  const { data: caller } = await supabase.from('profiles').select('role').eq('id', user.id).single()
+  if (!caller || !STATUS_ROLES.includes(caller.role)) {
+    return c.json({ error: 'Forbidden' }, 403)
+  }
+
+  // Rate limiting — 10 status updates per user per 60 seconds
   const { allowed, retryAfter } = await checkRateLimit(c.env, user.id)
   if (!allowed) {
     return c.json(
@@ -104,56 +119,67 @@ app.post('/status-update', async (c) => {
   }
 
   try {
-    const body = await c.req.json()
+    let body
+    try { body = await c.req.json() } catch { return c.json({ error: 'Invalid JSON body' }, 400) }
     const { passport_id, new_status, note } = body
 
     if (!passport_id || !new_status) {
       return c.json({ error: 'Missing required fields: passport_id, new_status' }, 400)
     }
-
     if (!VALID_STATUSES.includes(new_status)) {
       return c.json({ error: `Invalid status. Must be one of: ${VALID_STATUSES.join(', ')}` }, 400)
     }
 
-    const supabase = getSupabase(c.env)
+    // Read + update as the CALLER (anon key + their JWT) so RLS applies:
+    // an assistant can only change passports they created, exactly as in the UI.
+    const asUser = createClient(c.env.SUPABASE_URL, c.env.SUPABASE_ANON_KEY, {
+      global: { headers: { Authorization: `Bearer ${token}` } },
+    })
 
-    // phone removed — fetched but never used
-    const { data: passport } = await supabase.from('passports')
-      .select('passport_no, status, candidates(full_name, sub_agents(full_name, email, profile_id))')
-      .eq('id', passport_id).single()
+    const { data: current } = await asUser.from('passports')
+      .select('passport_no, status, candidate_id').eq('id', passport_id).maybeSingle()
+    if (!current) return c.json({ error: 'Passport not found' }, 404)
 
-    if (!passport) return c.json({ error: 'Passport not found' }, 404)
-
-    const candidate = passport.candidates
-    const agent = candidate?.agents
-
-    // FIX: Update the passport FIRST, then log — so the log only exists if the
-    // update actually succeeded. Previously the log was inserted before the update,
-    // creating phantom log entries for changes that never happened.
-    const { error: updateError } = await supabase
-      .from('passports')
-      .update({ status: new_status })
-      .eq('id', passport_id)
+    // Update first, then log — so the log only exists if the update succeeded.
+    const { data: updated, error: updateError } = await asUser
+      .from('passports').update({ status: new_status }).eq('id', passport_id).select('id')
 
     if (updateError) {
-      return c.json({ error: `Failed to update passport status: ${updateError.message}` }, 500)
+      console.error('[passports] update failed:', updateError.message)
+      return c.json({ error: 'Failed to update passport status' }, 500)
+    }
+    // RLS blocks silently (0 rows, no error) — treat that as forbidden.
+    if (!updated || updated.length === 0) {
+      return c.json({ error: 'You do not have permission to update this passport' }, 403)
     }
 
     await supabase.from('passport_workflow_logs').insert({
-      passport_id, from_status: passport.status, to_status: new_status,
+      passport_id, from_status: current.status, to_status: new_status,
       note: note || null, changed_by: user.id,
     })
 
-    if (agent?.email) {
+    // Look up who to notify with the service client (the caller may not be
+    // allowed to read sub_agents contact details).
+    // FIX: the relation was renamed agents → sub_agents in migration
+    // 20260906000001, but this code still read `candidate.agents`, so the
+    // email and bell notification never reached the sub-agent.
+    const { data: cand } = await supabase.from('candidates')
+      .select('full_name, sub_agents(full_name, email, profile_id)')
+      .eq('id', current.candidate_id).maybeSingle()
+    const subAgent = cand?.sub_agents
+    const candidateName = cand?.full_name ?? 'Unknown candidate'
+
+    if (subAgent?.email) {
       const statusLabel = new_status.replaceAll('_', ' ').replace(/\b\w/g, l => l.toUpperCase())
       await sendEmail(c.env, {
-        to: agent.email,
-        subject: `Passport Update — ${escHtml(candidate.full_name)}`,
+        to: subAgent.email,
+        // Subject is plain text — do NOT HTML-escape it (shows "&amp;" literally).
+        subject: `Passport Update — ${candidateName}`,
         html: `<div style="font-family:Arial,sans-serif;max-width:500px;margin:0 auto;padding:32px;">
             <h2>Passport Status Updated</h2>
-            <p>Dear ${escHtml(agent.full_name)},</p>
-            <p><strong>Candidate:</strong> ${escHtml(candidate.full_name)}</p>
-            <p><strong>Passport No:</strong> ${escHtml(passport.passport_no)}</p>
+            <p>Dear ${escHtml(subAgent.full_name)},</p>
+            <p><strong>Candidate:</strong> ${escHtml(candidateName)}</p>
+            <p><strong>Passport No:</strong> ${escHtml(current.passport_no)}</p>
             <p><strong>New Status:</strong> ${escHtml(statusLabel)}</p>
             ${note ? `<p><strong>Note:</strong> ${escHtml(note)}</p>` : ''}
             <a href="https://app.bhuiyanworkforce.com">Open AgencyOS</a>
@@ -161,21 +187,19 @@ app.post('/status-update', async (c) => {
       })
     }
 
-    // FIX: Notification should go to the agent whose candidate was updated,
-    // not to the staff member who triggered the change (user.id).
-    // Look up the agent's profile_id so the notification appears in their bell.
-    // Fall back to user.id if the agent has no linked profile (e.g. no login yet).
-    const agentProfileId = agent?.profile_id ?? null
+    // Bell notification goes to the sub-agent's login if they have one;
+    // otherwise fall back to the staff member who made the change.
     await supabase.from('notifications').insert({
-      user_id: agentProfileId ?? user.id,
+      user_id: subAgent?.profile_id ?? user.id,
       title: 'Passport Updated',
-      message: `${candidate.full_name}'s passport moved to ${new_status.replaceAll('_', ' ')}`,
+      message: `${candidateName}'s passport moved to ${new_status.replaceAll('_', ' ')}`,
       type: 'info',
     })
 
     return c.json({ success: true })
   } catch (err) {
-    return c.json({ error: err.message }, 500)
+    console.error('[passports] status-update error:', err?.message ?? err)
+    return c.json({ error: 'Internal server error' }, 500)
   }
 })
 
