@@ -112,14 +112,9 @@ export default function Dashboard() {
       })
       setExpiringPassports(expiring || [])
 
-      const in30days = new Date(nowMs)
-      in30days.setDate(in30days.getDate() + 30)
-      const soonExpiring = (expiring || []).filter(p => new Date(p.expiry_date) <= in30days)
-      soonExpiring.forEach(p => {
-        supabase.functions.invoke('send-notification', {
-          body: { type: 'passport_expiring', data: { candidate_name: p.candidates?.full_name || 'Unknown', passport_no: p.passport_no, expiry_date: p.expiry_date } }
-        })
-      })
+      // Expiry emails are sent by the scheduled DB job notify_expiring_passports()
+      // (see migration 20261012000001). They used to fire from here on every
+      // dashboard load by every user, and always failed with 401 anyway.
       setRecentActivity(recentLogs || [])
     } catch (err) {
       console.error('Dashboard load error:', err)
