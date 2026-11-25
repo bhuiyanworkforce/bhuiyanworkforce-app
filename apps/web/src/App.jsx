@@ -116,6 +116,7 @@ const VisaApplications = lazyWithRetry(() => import('./pages/visa/VisaApplicatio
 const Agents           = lazyWithRetry(() => import('./pages/agents/Agents'),               'agents')
 const SubAgents        = lazyWithRetry(() => import('./pages/subagents/SubAgents'),          'sub-agents')
 const Employers        = lazyWithRetry(() => import('./pages/employers/Employers'),          'employers')
+const EmployerLeads    = lazyWithRetry(() => import('./pages/leads/EmployerLeads'),          'employer-leads')
 const Accounts         = lazyWithRetry(() => import('./pages/accounts/Accounts'),           'accounts')
 const Candidates       = lazyWithRetry(() => import('./pages/candidates/Candidates'),       'candidates')
 const Profile          = lazyWithRetry(() => import('./pages/profile/Profile'),             'profile')
@@ -170,6 +171,7 @@ export default function App() {
               <Route path="agents"     element={<Agents />} />
               <Route path="sub-agents" element={<SubAgents />} />
               <Route path="employers"  element={<Employers />} />
+              <Route path="employer-leads" element={<EmployerLeads />} />
               <Route path="accounts"   element={<Accounts />} />
               <Route path="reports"    element={<Reports />} />
               <Route path="profile"    element={<Profile />} />
