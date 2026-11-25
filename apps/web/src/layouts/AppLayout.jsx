@@ -5,7 +5,7 @@ import {
   Wallet, LogOut, Menu, X, UserCircle,
   Settings, BarChart2, TrendingDown, Building2,
   Banknote, CreditCard, DollarSign, RotateCcw,
-  ClipboardList, Briefcase, Shield, Globe, Handshake
+  ClipboardList, Briefcase, Shield, Globe, Handshake, Target
 } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import NotificationBell from '../components/NotificationBell';
@@ -25,6 +25,7 @@ const NAV = [
   // this nav filter is a convenience, not the security boundary.
   { to: 'agents', label: 'Agents', icon: Globe, group: 'core', ownerOnly: true },
   { to: 'employers', label: 'Employers', icon: Handshake, group: 'core', ownerOnly: true },
+  { to: 'employer-leads', label: 'Employer Leads', icon: Target, group: 'core', ownerOnly: true },
   { to: 'employees', label: 'Employees', icon: Briefcase, group: 'core' },
   { to: 'users', label: 'Users', icon: Shield, group: 'core' },
   { to: 'accounts', label: 'Accounts', icon: Wallet, group: 'finance' },
