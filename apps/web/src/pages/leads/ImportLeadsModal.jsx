@@ -15,8 +15,8 @@ const ALIASES = {
   website:       ['website', 'web', 'site', 'url'],
   contact_name:  ['contactname', 'contactperson', 'person'],
   contact_role:  ['contactrole', 'role', 'title', 'position', 'jobtitle'],
-  contact_email: ['email', 'contactemail', 'emailaddress'],
-  contact_phone: ['phone', 'contactphone', 'mobile', 'phonenumber', 'whatsapp'],
+  contact_email: ['email', 'contactemail', 'emailaddress', 'sendtoemail', 'sendto'],
+  contact_phone: ['phone', 'contactphone', 'mobile', 'phonenumber', 'whatsapp', 'phonefromsheet'],
   roles_needed:  ['rolesneeded', 'roles', 'vacancies', 'positions'],
   source_url:    ['sourceurl', 'source', 'sourcelink', 'link'],
   notes:         ['notes', 'note', 'remarks'],
@@ -37,6 +37,8 @@ function mapRow(raw) {
     const hit = names.find(n => byHeader[n] !== undefined && String(byHeader[n]).trim() !== '')
     out[field] = hit ? clean(byHeader[hit]) : null
   }
+  // A cell can hold several numbers ("+30 123; +30 456"). Keep the first one.
+  if (out.contact_phone) out.contact_phone = clean(out.contact_phone.split(/[;,/]/)[0])
   return out
 }
 
@@ -44,6 +46,7 @@ export default function ImportLeadsModal({ onClose, onImported }) {
   const [rows, setRows] = useState(null)        // parsed, unclassified rows
   const [fileName, setFileName] = useState('')
   const [defaultSource, setDefaultSource] = useState('')
+  const [defaultCountry, setDefaultCountry] = useState('')
   const [sourceType, setSourceType] = useState('other')
   const [existing, setExisting] = useState(new Set())
   const [busy, setBusy] = useState(false)
@@ -94,11 +97,12 @@ export default function ImportLeadsModal({ onClose, onImported }) {
     if (!r.company_name) return { r, status: 'skip', reason: 'no company name' }
     const source_url = r.source_url || clean(defaultSource)
     if (!source_url) return { r, status: 'skip', reason: 'no source' }
-    const key = keyOf(r.company_name, r.country)
+    const country = r.country || clean(defaultCountry)
+    const key = keyOf(r.company_name, country)
     if (existing.has(key)) return { r, status: 'dup', reason: 'already in leads or employers' }
     if (seen.has(key)) return { r, status: 'dup', reason: 'repeated in this file' }
     seen.add(key)
-    return { r: { ...r, source_url }, status: 'new', reason: '' }
+    return { r: { ...r, source_url, country }, status: 'new', reason: '' }
   })
   const fresh = classified.filter(x => x.status === 'new')
   const dups = classified.filter(x => x.status === 'dup').length
@@ -165,13 +169,17 @@ export default function ImportLeadsModal({ onClose, onImported }) {
             <>
               <p className="text-slate-500 text-xs">
                 Upload an Excel or CSV file with a header row. Recognised columns: company, country, industry, website,
-                contact name, role, email, phone, roles needed, source, notes. Every lead needs a source, either in its row or in the box below.
+                contact name, role, email (or "Send to (email)"), phone, roles needed, source, notes. Every lead needs a source, either in its row or in the box below.
                 Companies already in Leads or Employers are skipped.
               </p>
 
               <label className="flex flex-col gap-1">
                 <span className="text-xs text-slate-500 font-semibold">Source for rows that have none (link or note)</span>
                 <input value={defaultSource} onChange={e => setDefaultSource(e.target.value)} placeholder="e.g. Romania hiring list, Nov 2026" className={inputClass} />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-xs text-slate-500 font-semibold">Country for rows that have none</span>
+                <input value={defaultCountry} onChange={e => setDefaultCountry(e.target.value)} placeholder="e.g. Greece" className={inputClass} />
               </label>
               <label className="flex flex-col gap-1">
                 <span className="text-xs text-slate-500 font-semibold">Found through</span>
