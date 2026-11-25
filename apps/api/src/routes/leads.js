@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { createClient } from '@supabase/supabase-js'
 import { escHtml, isValidEmail } from '../lib/emailUtils.js'
+import { looksLikeRefusal, normalizeForMatch, optOutFooter, ALL_FOOTERS } from '../lib/optOut.js'
 
 // Owner-only employer lead actions that need the service role:
 //   POST /:id/send-email   one vetted first-contact or follow-up email
@@ -65,12 +66,6 @@ function textToHtml(text) {
     .map(p => `<p style="font-family:Arial,sans-serif;font-size:14px;color:#222;margin:0 0 14px;">${escHtml(p).replace(/\n/g, '<br>')}</p>`)
     .join('')
 }
-
-const OPT_OUT_LINE =
-  'If you would rather not hear from us, reply with "no thanks" and we will not write again.'
-const OPT_OUT_LINE_EL =
-  'Αν προτιμάτε να μην λαμβάνετε άλλα μηνύματα από εμάς, απαντήστε «όχι ευχαριστώ» και δεν θα σας γράψουμε ξανά.'
-const GREEK_RE = /[\u0370-\u03FF\u1F00-\u1FFF]/
 
 // ── Zoho Mail sender ──────────────────────────────────────────────────────────
 // Sends through the Zoho Mail REST API as partnerships@bhuiyanworkforce.com, so
@@ -184,25 +179,14 @@ async function zohoGetJson(env, pathAndQuery) {
 }
 
 // ── Reply detection helpers ───────────────────────────────────────────────────
-function normalizeForMatch(text) {
-  return String(text ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/ς/g, 'σ')
-}
-
-const OPT_OUT_RE = new RegExp(
-  '\\b(no thanks|no thank you|unsubscribe|remove me|do not (contact|email|write)|don\'?t (contact|email|write)|stop (emailing|writing|contacting))\\b' +
-  '|οχι ευχαριστω|οχι ευχαριστουμε|μην (μου |μασ )?(στελνετε|γραφετε|επικοινωνειτε)|διαγραφη|απεγγραφη'
-)
 const AUTO_REPLY_RE = new RegExp(
   'automatic reply|auto.?reply|out of office|autoreply|undeliverable|delivery status|mail delivery|' +
   'αυτοματη απαντηση|εκτος γραφειου'
 )
 
 function looksLikeOptOut(subject, summary) {
-  // Our own footer says 'reply "no thanks"'. Remove it so a quoted copy does not count.
-  const own = [OPT_OUT_LINE, OPT_OUT_LINE_EL].map(normalizeForMatch)
-  let text = normalizeForMatch(`${subject} ${summary}`)
-  for (const line of own) text = text.split(line).join(' ')
-  return OPT_OUT_RE.test(text)
+  // Our own footer says 'reply "no thanks"'. looksLikeRefusal removes it so a quoted copy does not count.
+  return looksLikeRefusal(subject, summary, ALL_FOOTERS)
 }
 
 // ── POST /api/v1/leads/check-replies ──────────────────────────────────────────
@@ -331,7 +315,7 @@ app.post('/:id/send-email', async (c) => {
 
   const { data: lead, error: leadErr } = await supabase
     .from('employer_leads')
-    .select('id, company_name, contact_email, stage, vetting_status, registry_checked, address_type, do_not_contact, first_contacted_at')
+    .select('id, company_name, country, contact_email, stage, vetting_status, registry_checked, address_type, do_not_contact, first_contacted_at')
     .eq('id', leadId)
     .maybeSingle()
 
@@ -365,7 +349,7 @@ app.post('/:id/send-email', async (c) => {
     return c.json({ error: `Already sent ${MAX_EMAILS_PER_LEAD} emails to this lead. Pick up the phone or let it rest.` }, 429)
   }
 
-  const fullText = `${text}\n\n${GREEK_RE.test(text) ? OPT_OUT_LINE_EL : OPT_OUT_LINE}`
+  const fullText = `${text}\n\n${optOutFooter(lead.country, text)}`
 
   let sent
   try {
