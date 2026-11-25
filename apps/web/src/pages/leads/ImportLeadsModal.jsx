@@ -20,6 +20,8 @@ const ALIASES = {
   roles_needed:  ['rolesneeded', 'roles', 'vacancies', 'positions'],
   source_url:    ['sourceurl', 'source', 'sourcelink', 'link'],
   notes:         ['notes', 'note', 'remarks'],
+  draft_subject: ['subjectgreek', 'subject', 'emailsubject', 'draftsubject'],
+  draft_body:    ['emailgreek', 'emailbody', 'draftbody', 'body', 'message'],
 }
 
 const inputClass = 'bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500'
@@ -169,7 +171,7 @@ export default function ImportLeadsModal({ onClose, onImported }) {
             <>
               <p className="text-slate-500 text-xs">
                 Upload an Excel or CSV file with a header row. Recognised columns: company, country, industry, website,
-                contact name, role, email (or "Send to (email)"), phone, roles needed, source, notes. Every lead needs a source, either in its row or in the box below.
+                contact name, role, email (or "Send to (email)"), phone, roles needed, source, notes, and an optional email subject and body saved as the draft. Every lead needs a source, either in its row or in the box below.
                 Companies already in Leads or Employers are skipped.
               </p>
 

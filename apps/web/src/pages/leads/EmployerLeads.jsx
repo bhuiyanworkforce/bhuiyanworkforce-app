@@ -4,7 +4,7 @@ import { supabase } from '../../lib/supabase'
 import { safeDelete, todayISO } from '../../lib/utils'
 import {
   Plus, Search, Target, X, ChevronRight, AlertTriangle, RefreshCw, Trash2,
-  Mail, MessageCircle, ShieldCheck, ArrowRightCircle, Ban, CalendarClock, Upload, Reply,
+  Mail, MessageCircle, ShieldCheck, ArrowRightCircle, Ban, CalendarClock, Upload, Reply, Phone, PhoneCall, Inbox,
 } from 'lucide-react'
 import { ListSkeleton } from '../../components/Skeleton'
 import ImportLeadsModal from './ImportLeadsModal'
@@ -72,7 +72,65 @@ function whatsappUrl(phone, company) {
   return `https://wa.me/${digits}?text=${encodeURIComponent(text)}`
 }
 
+const GREEK_RE = /[Ͱ-Ͽἀ-῿]/
+
+function addDaysISO(days) {
+  return new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+}
+
+function telHref(phone) {
+  const raw = String(phone ?? '').trim()
+  const digits = raw.replace(/\D/g, '')
+  if (!digits) return undefined
+  if (raw.startsWith('+')) return `tel:+${digits}`
+  if (digits.startsWith('00')) return `tel:+${digits.slice(2)}`
+  return `tel:${digits}`
+}
+
+// A short second email. It follows the language of the lead's saved draft.
+function followUpDraft(lead) {
+  const original = lead.draft_subject?.trim() || `Workers from Bangladesh for ${lead.company_name}?`
+  const subject = `Re: ${original}`.replace(/^(Re:\s*)+/i, 'Re: ')
+  if (GREEK_RE.test(lead.draft_body ?? '')) {
+    return {
+      subject,
+      body:
+`Αγαπητοί κύριοι,
+
+Σας έγραψα πρόσφατα σχετικά με εργάτες από το Μπαγκλαντές για την εταιρεία σας. Γνωρίζω ότι τα εισερχόμενα γεμίζουν γρήγορα, γι' αυτό θέλω απλώς να βεβαιωθώ ότι το μήνυμά μου σας έφτασε.
+
+Αν δεν είναι η κατάλληλη στιγμή, αρκεί μια σύντομη απάντηση και δεν θα σας ξαναγράψω.
+
+Με εκτίμηση,
+MD Rezaul Kabir Bhuiyan
+Ιδρυτής, Bhuiyan Workforce Ltd.
+partnerships@bhuiyanworkforce.com | +880 1864 567912 (Mobile & WhatsApp)
+www.bhuiyanworkforce.com`,
+    }
+  }
+  const who = lead.contact_name?.trim() || 'there'
+  return {
+    subject,
+    body:
+`Hello ${who},
+
+I wrote recently about workers from Bangladesh for ${lead.company_name}. Inboxes fill up fast, so I wanted to check that my message reached you.
+
+If now is not the right time, a short reply is enough and I will not write again.
+
+Rezaul Kabir Bhuiyan
+Bhuiyan Workforce Ltd.
+bhuiyanworkforce.com`,
+  }
+}
+
 function draftEmail(lead) {
+  // Once an email has gone out, the next one is a follow-up, not the first email again.
+  if (lead.first_contacted_at) return followUpDraft(lead)
+  // A lead imported with its own written email opens with that text.
+  if (lead.draft_subject?.trim() && lead.draft_body?.trim()) {
+    return { subject: lead.draft_subject.trim(), body: lead.draft_body.trim() }
+  }
   const who = lead.contact_name?.trim() || 'there'
   const place = lead.country?.trim() || 'your country'
   const subject = `Workers from Bangladesh for ${lead.company_name}?`
@@ -221,7 +279,7 @@ function EmailModal({ lead, onClose, onSent }) {
         </div>
         <div className="p-5 pb-10 flex flex-col gap-4">
           {error && <p className="text-red-400 text-sm bg-red-500/10 px-4 py-2 rounded-xl">{error}</p>}
-          <p className="text-slate-500 text-xs">From partnerships@bhuiyanworkforce.com to {lead.contact_email}. Edit the draft so it fits this company before you send. An opt-out line is added automatically.</p>
+          <p className="text-slate-500 text-xs">From partnerships@bhuiyanworkforce.com to {lead.contact_email}. {lead.first_contacted_at ? 'This is a short follow-up. ' : lead.draft_body ? 'This is the email saved with the lead. ' : ''}Read it once more before you send. An opt-out line is added automatically.</p>
           <label className="flex flex-col gap-1">
             <span className="text-xs text-slate-500 font-semibold">Subject</span>
             <input value={subject} onChange={e => setSubject(e.target.value)} maxLength={150} className={inputClass} />
@@ -247,6 +305,9 @@ EmailModal.propTypes = {
     contact_email: PropTypes.string,
     contact_name: PropTypes.string,
     country: PropTypes.string,
+    draft_subject: PropTypes.string,
+    draft_body: PropTypes.string,
+    first_contacted_at: PropTypes.string,
   }).isRequired,
   onClose: PropTypes.func.isRequired,
   onSent: PropTypes.func.isRequired,
@@ -311,6 +372,17 @@ function LeadDetail({ lead, onClose, onChanged }) {
     } finally {
       setBusy(false)
     }
+  }
+
+  async function logCall() {
+    await update(
+      {
+        last_contacted_at: new Date().toISOString(),
+        next_follow_up: addDaysISO(7),
+        ...(['new', 'researching', 'vetted'].includes(lead.stage) ? { stage: 'contacted' } : {}),
+      },
+      { kind: 'call', summary: 'Called' }
+    )
   }
 
   function openWhatsApp() {
@@ -436,7 +508,7 @@ function LeadDetail({ lead, onClose, onChanged }) {
           <div className="flex flex-col gap-2">
             <button type="button" disabled={!canEmail} onClick={() => setShowEmail(true)}
               className="flex items-center justify-center gap-2 bg-indigo-600 text-white py-2.5 rounded-xl text-sm font-bold disabled:opacity-40">
-              <Mail size={16} /> Write email
+              <Mail size={16} /> {lead.first_contacted_at ? 'Write follow-up' : 'Write email'}
             </button>
             {emailHint && <p className="text-slate-500 text-xs">{emailHint}</p>}
 
@@ -446,6 +518,19 @@ function LeadDetail({ lead, onClose, onChanged }) {
             </button>
             {!canWhatsApp && !lead.do_not_contact && (
               <p className="text-slate-500 text-xs">WhatsApp unlocks after the company replies and a phone number is saved.</p>
+            )}
+
+            {lead.contact_phone && !lead.do_not_contact && (
+              <div className="flex gap-2">
+                <a href={telHref(lead.contact_phone)}
+                  className="flex-1 flex items-center justify-center gap-2 bg-slate-800 text-slate-200 py-2.5 rounded-xl text-sm font-bold">
+                  <Phone size={16} /> Call
+                </a>
+                <button type="button" onClick={logCall}
+                  className="flex-1 flex items-center justify-center gap-2 bg-slate-800 text-slate-200 py-2.5 rounded-xl text-sm font-bold">
+                  <PhoneCall size={16} /> Log call
+                </button>
+              </div>
             )}
 
             <button type="button" disabled={!canConvert || busy} onClick={handleConvert}
@@ -525,6 +610,9 @@ LeadDetail.propTypes = {
     vetting_notes: PropTypes.string,
     do_not_contact: PropTypes.bool,
     converted_employer_id: PropTypes.string,
+    first_contacted_at: PropTypes.string,
+    draft_subject: PropTypes.string,
+    draft_body: PropTypes.string,
   }).isRequired,
   onClose: PropTypes.func.isRequired,
   onChanged: PropTypes.func.isRequired,
@@ -538,6 +626,8 @@ export default function EmployerLeads() {
   const [refreshing, setRefreshing] = useState(false)
   const [search, setSearch] = useState('')
   const [stageFilter, setStageFilter] = useState('all')
+  const [checking, setChecking] = useState(false)
+  const [inboxMsg, setInboxMsg] = useState('')
   const [showAdd, setShowAdd] = useState(false)
   const [showImport, setShowImport] = useState(false)
   const [selectedId, setSelectedId] = useState(null)
@@ -558,6 +648,23 @@ export default function EmployerLeads() {
 
   useEffect(() => { fetchLeads() }, [fetchLeads])
 
+  async function handleCheckInbox() {
+    setChecking(true)
+    setInboxMsg('')
+    try {
+      const r = await callLeadsApi('/check-replies')
+      const parts = [`${r.newReplies} new repl${r.newReplies === 1 ? 'y' : 'ies'}`]
+      if (r.autoReplies > 0) parts.push(`${r.autoReplies} automatic`)
+      if (r.optOuts > 0) parts.push(`${r.optOuts} marked do not contact, please check`)
+      setInboxMsg(`Inbox checked: ${parts.join(', ')}.`)
+      fetchLeads()
+    } catch (err) {
+      setInboxMsg(err.message)
+    } finally {
+      setChecking(false)
+    }
+  }
+
   async function handleRefresh() {
     setRefreshing(true)
     await fetchLeads()
@@ -577,8 +684,10 @@ export default function EmployerLeads() {
 
   const today = todayISO()
   const q = search.toLowerCase()
+  const isCallList = l => !l.contact_email && !!l.contact_phone && !l.do_not_contact && !['won', 'lost'].includes(l.stage)
+  const callCount = leads.filter(isCallList).length
   const filtered = leads.filter(l =>
-    (stageFilter === 'all' || l.stage === stageFilter) &&
+    (stageFilter === 'all' || (stageFilter === 'call_list' ? isCallList(l) : l.stage === stageFilter)) &&
     (l.company_name?.toLowerCase().includes(q) || l.country?.toLowerCase().includes(q))
   )
   const dueCount = leads.filter(l => l.next_follow_up && l.next_follow_up <= today && !['won', 'lost'].includes(l.stage)).length
@@ -597,6 +706,9 @@ export default function EmployerLeads() {
           <button type="button" onClick={handleRefresh} disabled={refreshing} aria-label="Refresh" className="p-2 rounded-xl bg-slate-800 text-slate-400 disabled:opacity-50">
             <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
           </button>
+          <button type="button" onClick={handleCheckInbox} disabled={checking} aria-label="Check inbox for replies" className="p-2 rounded-xl bg-slate-800 text-slate-400 disabled:opacity-50">
+            <Inbox size={16} className={checking ? 'animate-pulse' : ''} />
+          </button>
           <button type="button" onClick={() => setShowImport(true)} aria-label="Import leads" className="p-2 rounded-xl bg-slate-800 text-slate-400">
             <Upload size={16} />
           </button>
@@ -606,6 +718,8 @@ export default function EmployerLeads() {
         </div>
       </div>
 
+      {inboxMsg && <p className="text-slate-300 text-sm bg-slate-900 border border-slate-800 px-4 py-2 rounded-xl">{inboxMsg}</p>}
+
       <div className="relative">
         <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
         <label htmlFor="lead-search" className="sr-only">Search leads</label>
@@ -614,10 +728,10 @@ export default function EmployerLeads() {
       </div>
 
       <div className="flex gap-2 overflow-x-auto pb-1">
-        {['all', ...STAGES].map(s => (
+        {['all', 'call_list', ...STAGES].map(s => (
           <button key={s} type="button" onClick={() => setStageFilter(s)}
             className={`flex-none text-xs font-bold px-3 py-1.5 rounded-full capitalize border ${stageFilter === s ? 'bg-indigo-500/15 text-indigo-300 border-indigo-500/50' : 'bg-slate-900 text-slate-400 border-slate-800'}`}>
-            {s}
+            {s === 'call_list' ? `Call list (${callCount})` : s}
           </button>
         ))}
       </div>
