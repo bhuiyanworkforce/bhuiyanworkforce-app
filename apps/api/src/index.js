@@ -4,6 +4,7 @@ import { logger } from 'hono/logger'
 import notifications from './routes/notifications.js'
 import passports from './routes/passports.js'
 import users from './routes/users.js'
+import leads from './routes/leads.js'
 
 const app = new Hono()
 
@@ -20,5 +21,6 @@ app.get('/api/v1/health', (c) => c.json({ status: 'healthy' }))
 app.route('/api/v1/notifications', notifications)
 app.route('/api/v1/passports', passports)
 app.route('/api/v1/users', users)
+app.route('/api/v1/leads', leads)
 
 export default app
