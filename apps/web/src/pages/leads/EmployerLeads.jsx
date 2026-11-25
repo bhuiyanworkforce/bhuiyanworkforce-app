@@ -4,7 +4,7 @@ import { supabase } from '../../lib/supabase'
 import { safeDelete, todayISO } from '../../lib/utils'
 import {
   Plus, Search, Target, X, ChevronRight, AlertTriangle, RefreshCw, Trash2,
-  Mail, MessageCircle, ShieldCheck, ArrowRightCircle, Ban, CalendarClock, Upload, Reply, Phone, PhoneCall, Inbox,
+  Mail, MessageCircle, ShieldCheck, ArrowRightCircle, Ban, CalendarClock, Upload, Reply, Inbox,
 } from 'lucide-react'
 import { ListSkeleton } from '../../components/Skeleton'
 import ImportLeadsModal from './ImportLeadsModal'
@@ -16,8 +16,6 @@ const SOURCE_TYPES = ['registry', 'job_board', 'referral', 'event', 'website', '
 const VETTING = ['pending', 'passed', 'hold', 'refused']
 const ADDRESS_TYPES = ['unknown', 'commercial', 'residential']
 
-// WhatsApp opens only after the company has answered us by some other channel.
-const WHATSAPP_STAGES = ['replied', 'negotiating', 'won']
 const CONVERT_STAGES = ['replied', 'negotiating', 'won']
 
 const STAGE_STYLE = {
@@ -64,11 +62,13 @@ async function callLeadsApi(path, body) {
   return data
 }
 
-function whatsappUrl(phone, company) {
+function whatsappUrl(phone, company, followedEmail) {
   let digits = String(phone ?? '').replace(/\D/g, '')
   if (digits.startsWith('00')) digits = digits.slice(2)
   if (digits.length < 8) return null
-  const text = `Hello, this is Rezaul from Bhuiyan Workforce. Following up on our email about ${company}.`
+  const text = followedEmail
+    ? `Hello, this is Rezaul from Bhuiyan Workforce. I sent an email to ${company} and wanted to make sure it reached you. If you would rather not hear from us, just say so and I will not write again.`
+    : `Hello, this is Rezaul from Bhuiyan Workforce in Bangladesh. We supply vetted workers to employers in Europe. Is there a person at ${company} I could send details to? If you would rather not hear from us, just say so and I will not write again.`
   return `https://wa.me/${digits}?text=${encodeURIComponent(text)}`
 }
 
@@ -76,15 +76,6 @@ const GREEK_RE = /[Ͱ-Ͽἀ-῿]/
 
 function addDaysISO(days) {
   return new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
-}
-
-function telHref(phone) {
-  const raw = String(phone ?? '').trim()
-  const digits = raw.replace(/\D/g, '')
-  if (!digits) return undefined
-  if (raw.startsWith('+')) return `tel:+${digits}`
-  if (digits.startsWith('00')) return `tel:+${digits.slice(2)}`
-  return `tel:${digits}`
 }
 
 // A short second email. It follows the language of the lead's saved draft.
@@ -374,29 +365,26 @@ function LeadDetail({ lead, onClose, onChanged }) {
     }
   }
 
-  async function logCall() {
+  async function openWhatsApp() {
+    const url = whatsappUrl(lead.contact_phone, lead.company_name, !!lead.first_contacted_at)
+    if (!url) { setError('Phone number needs a country code, for example +48 123 456 789'); return }
+    window.open(url, '_blank', 'noopener,noreferrer')
     await update(
       {
         last_contacted_at: new Date().toISOString(),
+        first_contacted_at: lead.first_contacted_at ?? new Date().toISOString(),
         next_follow_up: addDaysISO(7),
         ...(['new', 'researching', 'vetted'].includes(lead.stage) ? { stage: 'contacted' } : {}),
       },
-      { kind: 'call', summary: 'Called' }
+      { kind: 'whatsapp_opened', summary: 'Opened WhatsApp chat' }
     )
-  }
-
-  function openWhatsApp() {
-    const url = whatsappUrl(lead.contact_phone, lead.company_name)
-    if (!url) { setError('Phone number needs a country code, for example +48 123 456 789'); return }
-    logActivity('whatsapp_opened', 'Opened WhatsApp chat')
-    window.open(url, '_blank', 'noopener,noreferrer')
   }
 
   const stageStyle = STAGE_STYLE[lead.stage] ?? STAGE_STYLE.new
   const dueNow = lead.next_follow_up && lead.next_follow_up <= todayISO() && !['won', 'lost'].includes(lead.stage)
   const vettingOk = lead.vetting_status === 'passed' && lead.registry_checked && lead.address_type === 'commercial'
   const canEmail = !lead.do_not_contact && vettingOk && !!lead.contact_email
-  const canWhatsApp = !lead.do_not_contact && WHATSAPP_STAGES.includes(lead.stage) && !!lead.contact_phone
+  const canWhatsApp = !lead.do_not_contact && vettingOk && !!lead.contact_phone
   const canConvert = !lead.converted_employer_id && lead.vetting_status === 'passed' && CONVERT_STAGES.includes(lead.stage)
 
   let emailHint = ''
@@ -512,25 +500,12 @@ function LeadDetail({ lead, onClose, onChanged }) {
             </button>
             {emailHint && <p className="text-slate-500 text-xs">{emailHint}</p>}
 
-            <button type="button" disabled={!canWhatsApp} onClick={openWhatsApp}
+            <button type="button" disabled={!canWhatsApp || busy} onClick={openWhatsApp}
               className="flex items-center justify-center gap-2 bg-emerald-600 text-white py-2.5 rounded-xl text-sm font-bold disabled:opacity-40">
-              <MessageCircle size={16} /> Open WhatsApp chat
+              <MessageCircle size={16} /> {lead.first_contacted_at ? 'WhatsApp follow-up' : 'Send WhatsApp'}
             </button>
             {!canWhatsApp && !lead.do_not_contact && (
-              <p className="text-slate-500 text-xs">WhatsApp unlocks after the company replies and a phone number is saved.</p>
-            )}
-
-            {lead.contact_phone && !lead.do_not_contact && (
-              <div className="flex gap-2">
-                <a href={telHref(lead.contact_phone)}
-                  className="flex-1 flex items-center justify-center gap-2 bg-slate-800 text-slate-200 py-2.5 rounded-xl text-sm font-bold">
-                  <Phone size={16} /> Call
-                </a>
-                <button type="button" onClick={logCall}
-                  className="flex-1 flex items-center justify-center gap-2 bg-slate-800 text-slate-200 py-2.5 rounded-xl text-sm font-bold">
-                  <PhoneCall size={16} /> Log call
-                </button>
-              </div>
+              <p className="text-slate-500 text-xs">WhatsApp unlocks once vetting is passed and a phone number with country code is saved.</p>
             )}
 
             <button type="button" disabled={!canConvert || busy} onClick={handleConvert}
@@ -731,7 +706,7 @@ export default function EmployerLeads() {
         {['all', 'call_list', ...STAGES].map(s => (
           <button key={s} type="button" onClick={() => setStageFilter(s)}
             className={`flex-none text-xs font-bold px-3 py-1.5 rounded-full capitalize border ${stageFilter === s ? 'bg-indigo-500/15 text-indigo-300 border-indigo-500/50' : 'bg-slate-900 text-slate-400 border-slate-800'}`}>
-            {s === 'call_list' ? `Call list (${callCount})` : s}
+            {s === 'call_list' ? `WhatsApp list (${callCount})` : s}
           </button>
         ))}
       </div>
