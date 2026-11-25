@@ -14,9 +14,15 @@ API_URL     = "https://api.bhuiyanworkforce.com"
 # SUPABASE_ANON_KEY
 # RESEND_API_KEY
 # INTERNAL_SECRET
-# Optional, for employer leads:
-# REPLY_TO_EMAIL        (defaults to partnerships@bhuiyanworkforce.com)
-# RESEND_WEBHOOK_SECRET (only if you set up Resend inbound; leave unset to keep /leads/inbound off)
+# Employer leads send through Zoho Mail (partnerships@bhuiyanworkforce.com):
+# Create the refresh token with scopes: ZohoMail.messages.ALL,ZohoMail.accounts.READ
+# ZOHO_CLIENT_ID
+# ZOHO_CLIENT_SECRET
+# ZOHO_REFRESH_TOKEN
+# Plain vars (wrangler secret put also works). All optional:
+# ZOHO_DC                 com | eu | in | com.au | jp | ca | sa  (default com; match your Zoho login domain)
+# ZOHO_ACCOUNT_ID         looked up automatically when missing
+# LEADS_DAILY_EMAIL_LIMIT daily cap across all leads (default 20)
 
 # ── KV namespace for rate limiting ─────────────────────────────────────────────
 # FIX: Rate limiting was silently skipped because RATE_LIMIT_KV was not bound.
