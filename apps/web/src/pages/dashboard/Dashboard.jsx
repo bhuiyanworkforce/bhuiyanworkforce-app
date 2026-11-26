@@ -10,6 +10,7 @@ import {
 import { PASSPORT_WORKFLOW_STAGES as WORKFLOW_STAGES } from '../../lib/constants'
 import { safeFloat } from '../../lib/utils'
 import { DashboardSkeleton } from '../../components/Skeleton'
+import LeadsDueCard from '../../components/LeadsDueCard'
 
 function settled(result, fallback) {
   return result.status === 'fulfilled' ? result.value : fallback
@@ -181,6 +182,9 @@ export default function Dashboard() {
           ))}
         </div>
       )}
+
+      {/* Employer leads — owner only (the table is also owner-only under RLS) */}
+      {profile?.role === 'owner' && <LeadsDueCard />}
 
       {/* Stat cards */}
       <div className="grid grid-cols-2 gap-3">
