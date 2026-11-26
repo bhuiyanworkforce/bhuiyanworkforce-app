@@ -189,25 +189,32 @@ function looksLikeOptOut(subject, summary) {
   return looksLikeRefusal(subject, summary, ALL_FOOTERS)
 }
 
-// ── POST /api/v1/leads/check-replies ──────────────────────────────────────────
-// Owner taps "Check inbox". Looks at mail received since the first email went
-// out, matches senders to lead addresses, logs replies, moves leads to
-// "replied" and flags clear opt-outs as do-not-contact. Replies are logged
-// whatever the wording; the opt-out match is a best-effort guess on the subject
-// and the first lines of the message, so flagged leads should be checked by eye.
-app.post('/check-replies', async (c) => {
-  const auth = await getOwner(c)
-  if (auth.error) return c.json({ error: auth.error }, auth.status)
-  if (!zohoConfigured(c.env)) return c.json({ error: 'Zoho Mail is not configured on the server yet' }, 500)
+// ── Inbox check ───────────────────────────────────────────────────────────────
+// Used by the "Check inbox" button (POST /check-replies) and by the scheduled
+// trigger in index.js. Looks at mail received since the first email went out and:
+//   - matches senders to lead addresses, logs replies, moves leads to "replied"
+//   - flags clear refusals as do-not-contact (best-effort guess, so check by eye)
+//   - reads delivery-failure notices and marks the lead's email as bounced
+const BOUNCE_FROM_RE = /mailer-daemon|postmaster|mail delivery subsystem|maildelivery/
+const BOUNCE_SUBJECT_RE = new RegExp(
+  'undeliver|delivery status notification|delivery failure|delivery has failed|mail delivery failed|returned mail|' +
+  'failure notice|could not be delivered|couldn.t be delivered|address not found|message not delivered|' +
+  'delivery incomplete|non.?remis|unzustellbar'
+)
+const BOUNCE_DELAY_RE = /delay|warning|still trying|not yet delivered|will retry/
 
-  const supabase = getSupabase(c.env)
+export async function runInboxCheck(env) {
+  if (!zohoConfigured(env)) return { error: 'Zoho Mail is not configured on the server yet', status: 500 }
+
+  const supabase = getSupabase(env)
   const { data: leads, error: leadsErr } = await supabase
     .from('employer_leads')
-    .select('id, contact_email, stage, first_contacted_at, do_not_contact')
+    .select('id, contact_email, stage, first_contacted_at, do_not_contact, email_bounced')
     .not('first_contacted_at', 'is', null)
     .not('contact_email', 'is', null)
-  if (leadsErr) return c.json({ error: leadsErr.message }, 500)
-  if (!leads || leads.length === 0) return c.json({ newReplies: 0, autoReplies: 0, optOuts: 0 })
+  if (leadsErr) return { error: leadsErr.message, status: 500 }
+  const empty = { newReplies: 0, autoReplies: 0, optOuts: 0, bounces: 0, bouncesUnmatched: 0 }
+  if (!leads || leads.length === 0) return empty
 
   const byEmail = new Map(leads.map(l => [l.contact_email.trim().toLowerCase(), l]))
   const oldest = Math.min(...leads.map(l => Date.parse(l.first_contacted_at)))
@@ -219,7 +226,7 @@ app.post('/check-replies', async (c) => {
     for (let page = 0; page < 5; page++) {
       const start = 1 + page * 100
       const data = await zohoGetJson(
-        c.env,
+        env,
         `/messages/search?searchKey=newMails&receivedTime=${since}&start=${start}&limit=100`
       )
       const batch = Array.isArray(data?.data) ? data.data : []
@@ -227,8 +234,8 @@ app.post('/check-replies', async (c) => {
       if (batch.length < 100) break
     }
   } catch (err) {
-    console.error('[leads] check-replies read failed:', err?.message ?? err)
-    return c.json({ error: err?.message ?? 'Could not read the mailbox' }, 502)
+    console.error('[leads] inbox read failed:', err?.message ?? err)
+    return { error: err?.message ?? 'Could not read the mailbox', status: 502 }
   }
 
   // Skip messages already logged. The Zoho message id is kept in brackets at the end of the summary.
@@ -238,42 +245,64 @@ app.post('/check-replies', async (c) => {
     .select('lead_id, summary')
     .in('lead_id', leadIds)
     .in('kind', ['reply', 'note'])
-  if (loggedErr) return c.json({ error: loggedErr.message }, 500)
+  if (loggedErr) return { error: loggedErr.message, status: 500 }
   const seen = new Set()
+  const seenBounceIds = new Set()
   for (const row of logged ?? []) {
     const m = /\[(\d+)\]$/.exec(row.summary ?? '')
-    if (m) seen.add(`${row.lead_id}|${m[1]}`)
+    if (m) { seen.add(`${row.lead_id}|${m[1]}`); seenBounceIds.add(m[1]) }
   }
 
-  let newReplies = 0
-  let autoReplies = 0
-  let optOuts = 0
+  const out = { ...empty }
 
   for (const m of messages) {
     const from = String(m.fromAddress ?? '').trim().toLowerCase()
-    const lead = byEmail.get(from)
     const id = m.messageId != null ? String(m.messageId) : null
-    if (!lead || !id) continue
+    if (!id) continue
     const received = Number(m.receivedTime ?? m.receivedtime)
+    const subject = String(m.subject ?? '(no subject)').slice(0, 160)
+    const summaryText = String(m.summary ?? '')
+    const subjectNorm = normalizeForMatch(subject)
+
+    // Delivery failure notices come from the mail system, not from the lead.
+    if (!byEmail.has(from) && (BOUNCE_FROM_RE.test(from) || BOUNCE_SUBJECT_RE.test(subjectNorm))) {
+      if (BOUNCE_DELAY_RE.test(subjectNorm) || seenBounceIds.has(id)) continue
+      const haystack = `${subject} ${summaryText}`.toLowerCase()
+      const hit = leads.find(l => haystack.includes(l.contact_email.trim().toLowerCase()))
+      seenBounceIds.add(id)
+      if (!hit) { out.bouncesUnmatched += 1; continue }
+      if (Number.isFinite(received) && received < Date.parse(hit.first_contacted_at)) continue
+      if (!hit.email_bounced) {
+        await supabase.from('employer_leads')
+          .update({ email_bounced: true, email_bounced_at: new Date().toISOString() }).eq('id', hit.id)
+        hit.email_bounced = true
+      }
+      await supabase.from('employer_lead_activities').insert({
+        lead_id: hit.id, kind: 'note',
+        summary: `Email bounced, address looks dead. Check the address or use WhatsApp. [${id}]`,
+      })
+      out.bounces += 1
+      continue
+    }
+
+    const lead = byEmail.get(from)
+    if (!lead) continue
     if (Number.isFinite(received) && received < Date.parse(lead.first_contacted_at)) continue
     if (seen.has(`${lead.id}|${id}`)) continue
     seen.add(`${lead.id}|${id}`)
 
-    const subject = String(m.subject ?? '(no subject)').slice(0, 160)
-    const summaryText = String(m.summary ?? '')
-
-    if (AUTO_REPLY_RE.test(normalizeForMatch(subject))) {
+    if (AUTO_REPLY_RE.test(subjectNorm)) {
       await supabase.from('employer_lead_activities').insert({
         lead_id: lead.id, kind: 'note', summary: `Automatic reply, not counted: ${subject} [${id}]`,
       })
-      autoReplies += 1
+      out.autoReplies += 1
       continue
     }
 
     await supabase.from('employer_lead_activities').insert({
       lead_id: lead.id, kind: 'reply', summary: `Reply received: ${subject} [${id}]`,
     })
-    newReplies += 1
+    out.newReplies += 1
 
     if (['new', 'researching', 'vetted', 'contacted'].includes(lead.stage)) {
       await supabase.from('employer_leads').update({ stage: 'replied' }).eq('id', lead.id)
@@ -286,11 +315,20 @@ app.post('/check-replies', async (c) => {
         lead_id: lead.id, kind: 'note', summary: `Their reply looks like an opt-out, marked do not contact. Please read it. [${id}]`,
       })
       lead.do_not_contact = true
-      optOuts += 1
+      out.optOuts += 1
     }
   }
 
-  return c.json({ newReplies, autoReplies, optOuts })
+  return out
+}
+
+// ── POST /api/v1/leads/check-replies ──────────────────────────────────────────
+app.post('/check-replies', async (c) => {
+  const auth = await getOwner(c)
+  if (auth.error) return c.json({ error: auth.error }, auth.status)
+  const result = await runInboxCheck(c.env)
+  if (result.error) return c.json({ error: result.error }, result.status ?? 500)
+  return c.json(result)
 })
 
 // ── POST /api/v1/leads/:id/send-email ─────────────────────────────────────────
@@ -315,7 +353,7 @@ app.post('/:id/send-email', async (c) => {
 
   const { data: lead, error: leadErr } = await supabase
     .from('employer_leads')
-    .select('id, company_name, country, contact_email, stage, vetting_status, registry_checked, address_type, do_not_contact, first_contacted_at')
+    .select('id, company_name, country, contact_email, stage, vetting_status, registry_checked, address_type, do_not_contact, first_contacted_at, email_bounced')
     .eq('id', leadId)
     .maybeSingle()
 
@@ -323,6 +361,7 @@ app.post('/:id/send-email', async (c) => {
   if (!lead) return c.json({ error: 'Lead not found' }, 404)
 
   if (lead.do_not_contact)              return c.json({ error: 'This lead is marked do not contact' }, 409)
+  if (lead.email_bounced)               return c.json({ error: 'The last email to this address bounced. Correct the address first.' }, 409)
   if (lead.vetting_status !== 'passed') return c.json({ error: 'Vetting must be marked passed before emailing' }, 409)
   if (!lead.registry_checked) return c.json({ error: 'Tick "found in the official company registry" before emailing' }, 409)
   if (lead.address_type !== 'commercial') return c.json({ error: 'Address type must be commercial before emailing' }, 409)
