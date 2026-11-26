@@ -24,6 +24,10 @@ API_URL     = "https://api.bhuiyanworkforce.com"
 # ZOHO_ACCOUNT_ID         looked up automatically when missing
 # LEADS_DAILY_EMAIL_LIMIT daily cap across all leads (default 20)
 
+# Checks the partnerships inbox every 4 hours for replies, refusals and bounced emails.
+[triggers]
+crons = ["0 */4 * * *"]
+
 # ── KV namespace for rate limiting ─────────────────────────────────────────────
 # FIX: Rate limiting was silently skipped because RATE_LIMIT_KV was not bound.
 # The checkRateLimit() function logs a warning and skips the check when the
