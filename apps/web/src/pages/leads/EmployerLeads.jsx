@@ -310,6 +310,7 @@ function LeadDetail({ lead, onClose, onChanged }) {
   const [note, setNote] = useState('')
   const [showEmail, setShowEmail] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [fixedEmail, setFixedEmail] = useState('')
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   useEscape(onClose)
@@ -365,6 +366,16 @@ function LeadDetail({ lead, onClose, onChanged }) {
     }
   }
 
+  async function saveFixedEmail() {
+    const email = fixedEmail.trim()
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setError('Enter a valid email address'); return }
+    await update(
+      { contact_email: email, email_bounced: false, email_bounced_at: null },
+      { kind: 'note', summary: `Email address corrected to ${email}` }
+    )
+    setFixedEmail('')
+  }
+
   async function openWhatsApp() {
     const url = whatsappUrl(lead.contact_phone, lead.company_name, !!lead.first_contacted_at)
     if (!url) { setError('Phone number needs a country code, for example +48 123 456 789'); return }
@@ -372,7 +383,6 @@ function LeadDetail({ lead, onClose, onChanged }) {
     await update(
       {
         last_contacted_at: new Date().toISOString(),
-        first_contacted_at: lead.first_contacted_at ?? new Date().toISOString(),
         next_follow_up: addDaysISO(7),
         ...(['new', 'researching', 'vetted'].includes(lead.stage) ? { stage: 'contacted' } : {}),
       },
@@ -383,12 +393,13 @@ function LeadDetail({ lead, onClose, onChanged }) {
   const stageStyle = STAGE_STYLE[lead.stage] ?? STAGE_STYLE.new
   const dueNow = lead.next_follow_up && lead.next_follow_up <= todayISO() && !['won', 'lost'].includes(lead.stage)
   const vettingOk = lead.vetting_status === 'passed' && lead.registry_checked && lead.address_type === 'commercial'
-  const canEmail = !lead.do_not_contact && vettingOk && !!lead.contact_email
+  const canEmail = !lead.do_not_contact && !lead.email_bounced && vettingOk && !!lead.contact_email
   const canWhatsApp = !lead.do_not_contact && vettingOk && !!lead.contact_phone
   const canConvert = !lead.converted_employer_id && lead.vetting_status === 'passed' && CONVERT_STAGES.includes(lead.stage)
 
   let emailHint = ''
   if (lead.do_not_contact) emailHint = 'Marked do not contact.'
+  else if (lead.email_bounced) emailHint = 'Email is switched off because the last message bounced. Correct the address above, or use WhatsApp.'
   else if (!vettingOk) emailHint = 'To unlock email: tick the registry box, set the address to commercial, and mark vetting passed.'
   else if (!lead.contact_email) emailHint = 'Add a contact email to send.'
 
@@ -410,6 +421,19 @@ function LeadDetail({ lead, onClose, onChanged }) {
           <p className="text-red-300 text-sm bg-red-500/10 border border-red-500/30 px-4 py-2 rounded-xl flex items-center gap-2">
             <Ban size={16} /> Do not contact. Email and WhatsApp are off for this company.
           </p>
+        )}
+
+        {lead.email_bounced && !lead.do_not_contact && (
+          <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl px-4 py-3 flex flex-col gap-2">
+            <p className="text-amber-300 text-sm flex items-center gap-2"><AlertTriangle size={16} /> The last email to {lead.contact_email} bounced. That address looks dead.</p>
+            <div className="flex gap-2">
+              <label htmlFor="fixed-email" className="sr-only">Corrected email address</label>
+              <input id="fixed-email" type="email" value={fixedEmail} onChange={e => setFixedEmail(e.target.value)} placeholder="Corrected email address"
+                className="flex-1 min-w-0 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500" />
+              <button type="button" onClick={saveFixedEmail} disabled={busy}
+                className="bg-amber-600 text-white px-3 py-2 rounded-lg text-sm font-bold disabled:opacity-40">Save</button>
+            </div>
+          </div>
         )}
 
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 grid grid-cols-2 gap-3">
@@ -584,6 +608,7 @@ LeadDetail.propTypes = {
     vetting_status: PropTypes.string,
     vetting_notes: PropTypes.string,
     do_not_contact: PropTypes.bool,
+    email_bounced: PropTypes.bool,
     converted_employer_id: PropTypes.string,
     first_contacted_at: PropTypes.string,
     draft_subject: PropTypes.string,
@@ -631,6 +656,8 @@ export default function EmployerLeads() {
       const parts = [`${r.newReplies} new repl${r.newReplies === 1 ? 'y' : 'ies'}`]
       if (r.autoReplies > 0) parts.push(`${r.autoReplies} automatic`)
       if (r.optOuts > 0) parts.push(`${r.optOuts} marked do not contact, please check`)
+      if (r.bounces > 0) parts.push(`${r.bounces} bounced`)
+      if (r.bouncesUnmatched > 0) parts.push(`${r.bouncesUnmatched} bounce notice(s) could not be matched to a lead`)
       setInboxMsg(`Inbox checked: ${parts.join(', ')}.`)
       fetchLeads()
     } catch (err) {
@@ -659,7 +686,7 @@ export default function EmployerLeads() {
 
   const today = todayISO()
   const q = search.toLowerCase()
-  const isCallList = l => !l.contact_email && !!l.contact_phone && !l.do_not_contact && !['won', 'lost'].includes(l.stage)
+  const isCallList = l => (!l.contact_email || l.email_bounced) && !!l.contact_phone && !l.do_not_contact && !['won', 'lost'].includes(l.stage)
   const callCount = leads.filter(isCallList).length
   const filtered = leads.filter(l =>
     (stageFilter === 'all' || (stageFilter === 'call_list' ? isCallList(l) : l.stage === stageFilter)) &&
@@ -742,6 +769,7 @@ export default function EmployerLeads() {
                         <p className="text-slate-500 text-xs truncate">
                           {[l.country, l.industry].filter(Boolean).join(' · ') || 'No details set'}
                           {due ? ' · follow-up due' : ''}
+                          {l.email_bounced ? ' · email bounced' : ''}
                         </p>
                       </div>
                       <span className={`text-xs font-bold px-2 py-1 rounded-full capitalize flex-none ${style.bg} ${style.text}`}>{l.stage}</span>
