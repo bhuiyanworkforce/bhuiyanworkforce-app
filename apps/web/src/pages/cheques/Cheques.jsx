@@ -5,15 +5,22 @@ import { supabase } from '../../lib/supabase'
 import { safeDelete } from '../../lib/utils'
 import { Plus, X, ChevronRight, AlertTriangle, RefreshCw, Trash2 } from 'lucide-react'
 import { ListSkeleton } from '../../components/Skeleton'
+import VoucherButton from '../../components/VoucherButton'
+import { CHEQUE_REASONS } from '../../lib/constants'
 
 const STATUS_COLOR = { pending:'bg-amber-500/15 text-amber-400', cleared:'bg-emerald-500/15 text-emerald-400', bounced:'bg-red-500/15 text-red-400', cancelled:'bg-slate-500/15 text-slate-400' }
 const TYPE_COLOR   = { receivable:'bg-blue-500/15 text-blue-400', payable:'bg-rose-500/15 text-rose-400' }
 
 function AddChequeModal({ onClose, onSaved }) {
-  const [form, setForm] = useState({ cheque_no:'', type:'receivable', party_name:'', bank_name:'', amount:'', issue_date:'', due_date: new Date().toISOString().slice(0,10), notes:'' })
+  const [form, setForm] = useState({ cheque_no:'', type:'receivable', party_name:'', bank_name:'', amount:'', issue_date:'', due_date: new Date().toISOString().slice(0,10), notes:'', reason_category:'invoice', reason:'', invoice_id:'', linked_id:'' })
+  const [invoices, setInvoices] = useState([])
+  const [targets, setTargets] = useState([])   // what a payable cheque will settle
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const set = (k,v) => setForm(p=>({...p,[k]:v}))
+  const reasons = CHEQUE_REASONS[form.type]
+  const reasonDef = reasons.find(r => r.key === form.reason_category) || reasons[0]
+  const linkType = reasonDef.link
 
   // FIX: Escape key closes the modal (WCAG 2.1 SC 1.4.13)
   useEffect(() => {
@@ -22,10 +29,55 @@ function AddChequeModal({ onClose, onSaved }) {
     return () => document.removeEventListener('keydown', handleKey)
   }, [onClose])
 
+  // Unpaid invoices a receivable cheque can pay
+  useEffect(() => {
+    supabase.from('invoices').select('id, invoice_no, total, status, candidates(full_name)')
+      .in('status', ['unpaid', 'partial']).order('issued_at', { ascending: false })
+      .then(({ data }) => setInvoices(data || []))
+  }, [])
+
+  // Pending items a payable cheque can settle
+  useEffect(() => {
+    setTargets([])
+    if (linkType === 'employee_payroll') {
+      supabase.from('employee_payroll').select('id, month, year, net_salary, employees(name)').eq('status', 'pending')
+        .then(({ data }) => setTargets((data || []).map(r => ({ id: r.id, label: `${r.employees?.name || 'Employee'} ${r.month}/${r.year} · ৳${Number(r.net_salary).toLocaleString()}`, amount: r.net_salary, party: r.employees?.name }))))
+    } else if (linkType === 'sub_agent') {
+      supabase.from('sub_agents').select('id, full_name').order('full_name')
+        .then(({ data }) => setTargets((data || []).map(r => ({ id: r.id, label: r.full_name, party: r.full_name }))))
+    } else if (linkType === 'refund') {
+      supabase.from('refunds').select('id, amount, reason, status, candidates(full_name)').in('status', ['pending', 'approved'])
+        .then(({ data }) => setTargets((data || []).map(r => ({ id: r.id, label: `${r.candidates?.full_name || 'Refund'} · ৳${Number(r.amount).toLocaleString()}`, amount: r.amount, party: r.candidates?.full_name }))))
+    }
+  }, [linkType])
+
+  function pickType(t) {
+    setForm(p => ({ ...p, type: t, reason_category: CHEQUE_REASONS[t][0].key, invoice_id: '', linked_id: '' }))
+  }
+  function pickInvoice(id) {
+    const inv = invoices.find(i => i.id === id)
+    setForm(p => ({ ...p, invoice_id: id, party_name: p.party_name || inv?.candidates?.full_name || '', amount: p.amount || (inv ? String(inv.total) : ''), reason: p.reason || (inv ? `Payment of invoice ${inv.invoice_no}` : '') }))
+  }
+  function pickTarget(id) {
+    const t = targets.find(x => x.id === id)
+    setForm(p => ({ ...p, linked_id: id, party_name: p.party_name || t?.party || '', amount: p.amount || (t?.amount ? String(t.amount) : '') }))
+  }
+
   async function handleSave() {
     if (!form.cheque_no || !form.party_name || !form.amount || !form.due_date) { setError('Cheque no, party, amount and due date required'); return }
+    if (!form.reason.trim()) { setError('Say why this cheque is being ' + (form.type === 'payable' ? 'issued' : 'received')); return }
+    if (linkType === 'invoice' && !form.invoice_id) { setError('Choose the invoice this cheque pays'); return }
+    if (linkType && linkType !== 'invoice' && !form.linked_id) { setError('Choose what this cheque pays'); return }
     setSaving(true)
-    const { error: err } = await supabase.from('cheques').insert({ ...form, amount: Number.parseFloat(form.amount), issue_date: form.issue_date||null, notes: form.notes||null, bank_name: form.bank_name||null })
+    const { error: err } = await supabase.from('cheques').insert({
+      cheque_no: form.cheque_no, type: form.type, party_name: form.party_name,
+      amount: Number.parseFloat(form.amount), due_date: form.due_date,
+      issue_date: form.issue_date||null, notes: form.notes||null, bank_name: form.bank_name||null,
+      reason_category: form.reason_category, reason: form.reason.trim(),
+      invoice_id: linkType === 'invoice' ? form.invoice_id : null,
+      linked_type: linkType && linkType !== 'invoice' ? linkType : null,
+      linked_id: linkType && linkType !== 'invoice' ? form.linked_id : null,
+    })
     if (err) { setError(err.message); setSaving(false); return }
     onSaved()
   }
@@ -43,7 +95,7 @@ function AddChequeModal({ onClose, onSaved }) {
             <span className="text-xs text-slate-500 font-semibold">Type</span>
             <div className="grid grid-cols-2 gap-2">
               {['receivable','payable'].map(t=>(
-                <button key={t} onClick={()=>set('type',t)} className={`py-2.5 rounded-xl text-sm font-bold capitalize transition-colors ${form.type===t?'bg-indigo-500 text-white':'bg-slate-800 text-slate-400'}`}>{t}</button>
+                <button key={t} onClick={()=>pickType(t)} className={`py-2.5 rounded-xl text-sm font-bold capitalize transition-colors ${form.type===t?'bg-indigo-500 text-white':'bg-slate-800 text-slate-400'}`}>{t}</button>
               ))}
             </div>
           </label>
@@ -57,6 +109,34 @@ function AddChequeModal({ onClose, onSaved }) {
               <input value={form.bank_name} onChange={e=>set('bank_name',e.target.value)} placeholder="Optional" className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500"/>
             </label>
           </div>
+          <label className="flex flex-col gap-1">
+            <span className="text-xs text-slate-500 font-semibold">Why is this cheque {form.type === 'payable' ? 'being issued' : 'coming in'}? *</span>
+            <select value={form.reason_category} onChange={e=>setForm(p=>({...p, reason_category:e.target.value, invoice_id:'', linked_id:''}))} className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500">
+              {reasons.map(r=><option key={r.key} value={r.key}>{r.label}</option>)}
+            </select>
+          </label>
+          {linkType === 'invoice' && (
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-slate-500 font-semibold">Invoice *</span>
+              <select value={form.invoice_id} onChange={e=>pickInvoice(e.target.value)} className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500">
+                <option value="">Select an unpaid invoice</option>
+                {invoices.map(i=><option key={i.id} value={i.id}>{i.invoice_no} · {i.candidates?.full_name || 'No candidate'} · ৳{Number(i.total).toLocaleString()}</option>)}
+              </select>
+            </label>
+          )}
+          {linkType && linkType !== 'invoice' && (
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-slate-500 font-semibold">{linkType === 'sub_agent' ? 'Sub agent *' : linkType === 'refund' ? 'Refund *' : 'Payroll entry *'}</span>
+              <select value={form.linked_id} onChange={e=>pickTarget(e.target.value)} className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500">
+                <option value="">{targets.length ? 'Select' : 'Nothing pending to pay'}</option>
+                {targets.map(t=><option key={t.id} value={t.id}>{t.label}</option>)}
+              </select>
+            </label>
+          )}
+          <label className="flex flex-col gap-1">
+            <span className="text-xs text-slate-500 font-semibold">Reason in your words *</span>
+            <input value={form.reason} onChange={e=>set('reason',e.target.value)} placeholder="e.g. October salary, office rent, final payment" className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500" />
+          </label>
           <label className="flex flex-col gap-1">
             <span className="text-xs text-slate-500 font-semibold">Party Name *</span>
             <input value={form.party_name} onChange={e=>set('party_name',e.target.value)} placeholder="Payer / Payee name" className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500"/>
@@ -104,16 +184,10 @@ function ChequeDetail({ cheque: initial, onClose, onUpdated }) {
     return () => document.removeEventListener('keydown', handleKey)
   }, [onClose])
 
-  // Fix: two separate problems here.
-  //   1. `setUpdating(true)` was never called — only `setUpdating(false)`
-  //      at the end. The buttons are wired to `disabled={updating}`, so
-  //      they never actually disabled during the request. A double-tap
-  //      on "Mark as Cleared" could fire this twice and create two
-  //      expense entries for the same cheque.
-  //   2. Neither write was checked. A failed status update looked like
-  //      success, and a failed expense insert after a successful status
-  //      change left the cheque marked "cleared" with no matching
-  //      expense record.
+  // Clearing a cheque is handled by the database in one transaction:
+  //   receivable -> adds a payment to the linked invoice (revenue)
+  //   payable    -> pays the linked payroll / sub agent / refund, or books one expense
+  // Nothing is written from here except the status, so nothing can count twice.
   async function updateStatus(status) {
     setUpdating(true)
     const { error: statusErr } = await supabase.from('cheques').update({ status }).eq('id', cheque.id)
@@ -121,19 +195,6 @@ function ChequeDetail({ cheque: initial, onClose, onUpdated }) {
       alert(`Could not update status: ${statusErr.message}`)
       setUpdating(false)
       return
-    }
-    if (status === 'cleared' && cheque.type === 'payable') {
-      const { error: expenseErr } = await supabase.from('expenses').insert({
-        date: new Date().toISOString().split('T')[0],
-        category: 'other',
-        description: `Cheque cleared — ${cheque.cheque_no} · ${cheque.party_name}`,
-        amount: Number.parseFloat(cheque.amount || 0),
-        payment_method: 'cheque',
-        reference_no: cheque.cheque_no,
-      })
-      if (expenseErr) {
-        alert(`Marked as cleared, but the matching expense record failed to save (${expenseErr.message}). Please add it manually in Expenses so the books stay accurate.`)
-      }
     }
     setCheque(prev => ({ ...prev, status }))
     onUpdated()
@@ -168,6 +229,10 @@ function ChequeDetail({ cheque: initial, onClose, onUpdated }) {
                 <p className="text-slate-200 text-sm font-semibold">{f.value}</p>
               </div>
             ))}
+            <div className="col-span-2">
+              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-0.5">Reason</p>
+              <p className="text-slate-200 text-sm font-semibold">{cheque.reason || '—'}</p>
+            </div>
             {cheque.notes && (
               <div className="col-span-2">
                 <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-0.5">Notes</p>
@@ -186,7 +251,11 @@ function ChequeDetail({ cheque: initial, onClose, onUpdated }) {
         {cheque.status === 'cleared' && (
           <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-2xl p-4 text-center">
             <p className="text-emerald-400 font-bold">✓ Cheque Cleared</p>
+            <p className="text-slate-500 text-xs mt-1">{cheque.type === 'receivable' ? 'Added to the invoice as a payment.' : cheque.linked_type === 'refund' ? 'The refund was marked as paid.' : cheque.linked_type === 'sub_agent' ? 'Recorded as a commission payout.' : 'Recorded as an expense.'}</p>
           </div>
+        )}
+        {cheque.status === 'cleared' && cheque.type === 'payable' && (!cheque.linked_type || ['employee_payroll', 'payroll'].includes(cheque.linked_type)) && (
+          <VoucherButton sourceType={cheque.linked_type || 'cheque'} sourceId={cheque.linked_id || cheque.id} />
         )}
         {cheque.status === 'bounced' && (
           <div className="bg-red-500/10 border border-red-500/30 rounded-2xl p-4 text-center">
