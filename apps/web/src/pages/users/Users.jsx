@@ -36,11 +36,14 @@ const ROLE_STYLES = {
 
 const API_BASE = import.meta.env.VITE_API_URL ?? 'https://api.bhuiyanworkforce.com'
 
-async function apiFetch(path, options = {}) {
-  const { data: { session } } = await supabase.auth.getSession()
-  const token = session?.access_token
-  if (!token) throw new Error('Not authenticated')
+const REASON_TEXT = {
+  no_token:              'You are not signed in. Log out and log in again.',
+  token_rejected:        'Your login has expired. Log out and log in again.',
+  server_config_missing: 'The server is missing its Supabase keys (SUPABASE_URL, SUPABASE_ANON_KEY or SUPABASE_SERVICE_KEY on the Cloudflare Worker).',
+  profile_lookup_failed: 'The server could not read your profile. Check SUPABASE_SERVICE_KEY on the Cloudflare Worker.',
+}
 
+async function callApi(path, options, token) {
   const res = await fetch(`${API_BASE}/api/v1${path}`, {
     ...options,
     headers: {
@@ -49,9 +52,32 @@ async function apiFetch(path, options = {}) {
       ...(options.headers ?? {}),
     },
   })
+  const json = await res.json().catch(() => ({}))
+  return { res, json }
+}
 
-  const json = await res.json()
-  if (!res.ok) throw new Error(json.error ?? `Request failed (${res.status})`)
+async function apiFetch(path, options = {}) {
+  const { data: { session } } = await supabase.auth.getSession()
+  let token = session?.access_token
+  if (!token) throw new Error('Not authenticated')
+
+  let { res, json } = await callApi(path, options, token)
+
+  // An expired access token is the usual cause of a 401 here (the refresh can
+  // time out on a slow connection). Refresh once and try again.
+  if (res.status === 401) {
+    const { data: refreshed } = await supabase.auth.refreshSession()
+    const fresh = refreshed?.session?.access_token
+    if (fresh && fresh !== token) {
+      token = fresh
+      ;({ res, json } = await callApi(path, options, token))
+    }
+  }
+
+  if (!res.ok) {
+    const why = REASON_TEXT[json.reason]
+    throw new Error(why ?? json.error ?? `Request failed (${res.status})`)
+  }
   return json
 }
 
