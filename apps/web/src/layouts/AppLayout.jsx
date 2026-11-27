@@ -1,4 +1,4 @@
-import { Outlet, NavLink, useNavigate } from 'react-router-dom';
+import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import {
   LayoutDashboard, FileText, Stamp, Users,
@@ -67,6 +67,7 @@ const FOCUSABLE = [
 export default function AppLayout() {
   const { profile, signOut } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
   const isOwner     = profile?.role === 'owner'
   const isAgent     = profile?.role === 'agent'
@@ -75,13 +76,23 @@ export default function AppLayout() {
 
   const menuPanelRef = useRef(null);
 
-  // Sub Agent: Dashboard, Passports, Candidates only — no Accounts, no Finance
+  // Sub Agent: their own Candidates only — nothing else (enforced by the database too)
   const ownerCoreNav    = NAV.filter(n => n.group === 'core')
   const managerCoreNav  = NAV.filter(n => n.group === 'core' && n.to !== 'users' && !n.ownerOnly)
-  const agentNav        = NAV.filter(n => ['dashboard', 'candidates', 'passports'].includes(n.to))
+  const agentNav        = NAV.filter(n => n.to === 'candidates')
   const assistantNav    = NAV.filter(n => ['dashboard', 'candidates', 'passports', 'visa'].includes(n.to))
-  const agentBottom     = BOTTOM_NAV.filter(n => ['dashboard', 'passports', 'candidates'].includes(n.to))
+  const agentBottom     = BOTTOM_NAV.filter(n => n.to === 'candidates')
   const assistantBottom = BOTTOM_NAV.filter(n => ['dashboard', 'candidates', 'passports', 'visa'].includes(n.to))
+
+  // Sub agents can only use Candidates (and their own profile): send them there
+  // if they land anywhere else (e.g. the default /dashboard after login).
+  useEffect(() => {
+    if (!isAgent) return
+    const p = location.pathname
+    if (!p.startsWith('/candidates') && !p.startsWith('/profile')) {
+      navigate('/candidates', { replace: true })
+    }
+  }, [isAgent, location.pathname, navigate])
 
   const handleSignOut = async () => {
     await signOut();
