@@ -155,6 +155,25 @@ app.post('/', async (c) => {
     return c.json({ error: 'Could not create user. The email may already be registered.' }, 400)
   }
 
+  // Write the profile role explicitly instead of relying on the database
+  // trigger alone. If the live handle_new_user() differs from the repo (it
+  // already did once), a new user silently became 'client' even though the
+  // API reported the role the owner picked. The service role is allowed to set
+  // roles; browser sessions are blocked by trg_prevent_role_self_change.
+  const { error: profileErr } = await supabase
+    .from('profiles')
+    .upsert(
+      { id: data.user.id, full_name: full_name?.trim() || data.user.email, role },
+      { onConflict: 'id' },
+    )
+
+  if (profileErr) {
+    console.error('[users] profile role write failed:', profileErr.message)
+    // Don't leave a half-created account behind (it would be a 'client').
+    await supabase.auth.admin.deleteUser(data.user.id)
+    return c.json({ error: 'Could not set up the user profile. Nothing was created.' }, 500)
+  }
+
   return c.json({ user: { id: data.user.id, email: data.user.email, role } })
 })
 
