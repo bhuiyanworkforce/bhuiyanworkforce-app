@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { safeDelete } from '../../lib/utils'
 import { X, Users, Wallet, TrendingUp, FileText, Plus, Trash2 } from 'lucide-react'
+import VoucherButton from '../../components/VoucherButton'
 
 export default function SubAgentDetail({ subAgent, onClose }) {
   const [candidates, setCandidates] = useState([])
@@ -51,6 +52,7 @@ export default function SubAgentDetail({ subAgent, onClose }) {
   }
   const [payoutAmount, setPayoutAmount] = useState('')
   const [payoutNotes, setPayoutNotes] = useState('')
+  const [payoutMethod, setPayoutMethod] = useState('cash')
   const [saving, setSaving] = useState(false)
 
   useEffect(() => { fetchData(); fetchLogins() }, [])
@@ -83,6 +85,7 @@ export default function SubAgentDetail({ subAgent, onClose }) {
       sub_agent_id: subAgent.id,
       amount: Number.parseFloat(payoutAmount),
       notes: payoutNotes || null,
+      payment_method: payoutMethod,
       paid_by: user.id,
     })
     if (error) {
@@ -92,6 +95,7 @@ export default function SubAgentDetail({ subAgent, onClose }) {
     }
     setPayoutAmount('')
     setPayoutNotes('')
+    setPayoutMethod('cash')
     setShowPayout(false)
     setSaving(false)
     fetchData()
@@ -234,6 +238,13 @@ export default function SubAgentDetail({ subAgent, onClose }) {
               <input type="number" min="0" value={payoutAmount} onChange={e => setPayoutAmount(e.target.value)}
                 placeholder="Amount (৳)"
                 className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm text-slate-100" />
+              <select value={payoutMethod} onChange={e => setPayoutMethod(e.target.value)}
+                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm text-slate-100">
+                <option value="cash">Cash</option>
+                <option value="bank">Bank transfer</option>
+                <option value="mobile">Mobile banking</option>
+              </select>
+              <p className="text-[11px] text-slate-500">Recording a payout adds it to Expenses automatically and creates a voucher.</p>
               <input value={payoutNotes} onChange={e => setPayoutNotes(e.target.value)}
                 placeholder="Notes (optional)"
                 className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm text-slate-100" />
@@ -254,6 +265,7 @@ export default function SubAgentDetail({ subAgent, onClose }) {
                     <p className="text-slate-500 text-xs">{new Date(p.paid_at).toLocaleDateString()}</p>
                     {p.notes && <p className="text-slate-400 text-xs">{p.notes}</p>}
                   </div>
+                  <VoucherButton sourceType="sub_agent_payout" sourceId={p.id} compact />
                 </li>
               ))}
             </ul>
