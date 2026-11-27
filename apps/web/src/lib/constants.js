@@ -86,10 +86,33 @@ export function loanStatusColor(status) {
 }
 
 // ─── Expense categories ────────────────────────────────────────────────────────
-export const EXPENSE_CATEGORIES = ['salary', 'rent', 'embassy_fee', 'medical', 'travel', 'office', 'other']
+// Every category that can appear on the Expenses list (filters, badges).
+export const EXPENSE_CATEGORIES = ['salary', 'commission', 'rent', 'embassy_fee', 'medical', 'travel', 'office', 'other']
+// Categories you can type in by hand. Salary and commission are created
+// automatically when you pay them, so they are not offered here.
+export const MANUAL_EXPENSE_CATEGORIES = ['rent', 'embassy_fee', 'medical', 'travel', 'office', 'other']
+
+// Why a cheque is being issued or received. 'link' says what it must be tied to.
+export const CHEQUE_REASONS = {
+  receivable: [
+    { key: 'invoice', label: 'Payment of an invoice', link: 'invoice' },
+  ],
+  payable: [
+    { key: 'salary',      label: 'Employee salary',          link: 'employee_payroll' },
+    { key: 'commission',  label: 'Sub agent commission',     link: 'sub_agent' },
+    { key: 'refund',      label: 'Refund to candidate',      link: 'refund' },
+    { key: 'rent',        label: 'Rent',                     link: null },
+    { key: 'embassy_fee', label: 'Embassy / government fee', link: null },
+    { key: 'medical',     label: 'Medical',                  link: null },
+    { key: 'travel',      label: 'Travel',                   link: null },
+    { key: 'office',      label: 'Office cost',              link: null },
+    { key: 'other',       label: 'Other',                    link: null },
+  ],
+}
 
 export const EXPENSE_CAT_COLOR = {
   salary:      'bg-purple-500/15 text-purple-400',
+  commission:  'bg-emerald-500/15 text-emerald-400',
   rent:        'bg-rose-500/15 text-rose-400',
   embassy_fee: 'bg-blue-500/15 text-blue-400',
   medical:     'bg-teal-500/15 text-teal-400',

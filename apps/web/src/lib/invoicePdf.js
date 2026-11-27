@@ -36,7 +36,7 @@ const PAGE_H = 1123
 const SCALE  = 2      // render at 2x for sharp text
 
 // ── helpers ─────────────────────────────────────────────────────────────────────
-function esc(value) {
+export function esc(value) {
   return String(value ?? '')
     .replaceAll('&', '&amp;')
     .replaceAll('<', '&lt;')
@@ -45,19 +45,19 @@ function esc(value) {
     .replaceAll("'", '&#39;')
 }
 
-function money(v) {
+export function money(v) {
   const n = Number.parseFloat(v) || 0
   return formatBDT(n, Number.isInteger(n) ? 0 : 2)
 }
 
-function fmtDate(d) {
+export function fmtDate(d) {
   if (!d) return '—'
   const dt = new Date(d)
   if (Number.isNaN(dt.getTime())) return '—'
   return dt.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
-function label(s) {
+export function label(s) {
   return String(s ?? '').replaceAll('_', ' ').replace(/\b\w/g, c => c.toUpperCase())
 }
 
@@ -68,7 +68,7 @@ const STATUS_STYLE = {
   cancelled: { bg: '#E5E7EB', fg: '#374151' },
 }
 
-async function loadLogoDataUrl() {
+export async function loadLogoDataUrl() {
   try {
     const res = await fetch(LOGO_URL)
     if (!res.ok) return ''
@@ -352,10 +352,9 @@ function buildPdf(jpegPages) {
 }
 
 // ── Public API ──────────────────────────────────────────────────────────────────
-/** Build the invoice PDF and return it as a Blob. */
-export async function generateInvoicePdfBlob(data) {
-  const logo = await loadLogoDataUrl()
-  const { canvas, pages } = await renderToCanvas(buildInvoiceBody({ ...data, logo }))
+/** Lay out any HTML body (a .inv root) as A4 pages and return a PDF Blob. */
+export async function bodyToPdfBlob(bodyHtml) {
+  const { canvas, pages } = await renderToCanvas(bodyHtml)
 
   const jpegPages = []
   for (let p = 0; p < pages; p++) {
@@ -369,6 +368,24 @@ export async function generateInvoicePdfBlob(data) {
     jpegPages.push({ bytes: await canvasToJpeg(slice), width: slice.width, height: slice.height })
   }
   return buildPdf(jpegPages)
+}
+
+/** Download a Blob as a file (works on mobile browsers). */
+export function downloadPdfBlob(blob, filename) {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  // Revoking immediately breaks the download on some mobile browsers.
+  setTimeout(() => { a.remove(); URL.revokeObjectURL(url) }, 10_000)
+}
+
+/** Build the invoice PDF and return it as a Blob. */
+export async function generateInvoicePdfBlob(data) {
+  const logo = await loadLogoDataUrl()
+  return bodyToPdfBlob(buildInvoiceBody({ ...data, logo }))
 }
 
 /** Build the PDF and trigger a file download named after the invoice. */
