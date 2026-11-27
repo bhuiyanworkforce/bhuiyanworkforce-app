@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import { Plus, X, ChevronRight, AlertTriangle, RefreshCw } from 'lucide-react'
 import { ListSkeleton } from '../../components/Skeleton'
+import VoucherButton from '../../components/VoucherButton'
 
 const STATUS_COLOR = {
   pending:  'bg-amber-500/15 text-amber-400',
@@ -140,9 +141,12 @@ function RefundDetail({ refund: initial, onClose, onUpdated }) {
   async function updateStatus(status) {
     setUpdating(true)
     setUpdateError('')
-    const { error } = await supabase.from('refunds').update({ status }).eq('id', refund.id)
+    // On 'paid' the database issues the refund voucher number and checks the
+    // amount against what was received on the invoice.
+    const { data, error } = await supabase.from('refunds').update({ status }).eq('id', refund.id)
+      .select('status, voucher_no, paid_at').single()
     if (error) { setUpdateError(error.message); setUpdating(false); return }
-    setRefund(prev => ({ ...prev, status }))
+    setRefund(prev => ({ ...prev, ...data }))
     onUpdated()
     setUpdating(false)
   }
@@ -191,8 +195,10 @@ function RefundDetail({ refund: initial, onClose, onUpdated }) {
         {refund.status === 'paid' && (
           <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-2xl p-4 text-center">
             <p className="text-emerald-400 font-bold">✓ Refund Paid</p>
+            {refund.voucher_no && <p className="text-slate-500 text-xs mt-1 font-mono">{refund.voucher_no}</p>}
           </div>
         )}
+        {refund.status === 'paid' && refund.voucher_no && <VoucherButton refund={refund} />}
       </div>
     </div>
   )
