@@ -11,6 +11,39 @@ export default function SubAgentDetail({ subAgent, onClose }) {
   const [showPayout, setShowPayout] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
 
+  // ── Login account link (lets this sub agent sign in and see ONLY their candidates)
+  const [linkedId, setLinkedId]       = useState(subAgent.profile_id || null)
+  const [loginProfiles, setLoginProfiles] = useState([])
+  const [takenIds, setTakenIds]       = useState([])
+  const [pickId, setPickId]           = useState('')
+  const [linkBusy, setLinkBusy]       = useState(false)
+  const [linkMsg, setLinkMsg]         = useState('')
+
+  async function fetchLogins() {
+    const [{ data: profs }, { data: linked }] = await Promise.all([
+      supabase.from('profiles').select('id, full_name').eq('role', 'agent').order('full_name'),
+      supabase.from('sub_agents').select('profile_id').not('profile_id', 'is', null),
+    ])
+    setLoginProfiles(profs || [])
+    setTakenIds((linked || []).map(r => r.profile_id))
+  }
+
+  async function saveLink(profileId) {
+    setLinkBusy(true)
+    setLinkMsg('')
+    const { error } = await supabase.from('sub_agents').update({ profile_id: profileId }).eq('id', subAgent.id)
+    if (error) {
+      setLinkMsg(error.message.includes('duplicate')
+        ? 'That login is already linked to another sub agent.'
+        : `Could not save: ${error.message}`)
+    } else {
+      setLinkedId(profileId)
+      setPickId('')
+      await fetchLogins()
+    }
+    setLinkBusy(false)
+  }
+
   async function handleDelete() {
     const result = await safeDelete(supabase, 'sub_agents', 'id', subAgent.id)
     if (!result.ok) { alert(result.message); return }
@@ -20,7 +53,7 @@ export default function SubAgentDetail({ subAgent, onClose }) {
   const [payoutNotes, setPayoutNotes] = useState('')
   const [saving, setSaving] = useState(false)
 
-  useEffect(() => { fetchData() }, [])
+  useEffect(() => { fetchData(); fetchLogins() }, [])
 
   async function fetchData() {
     const [{ data: cands }, { data: invs }, { data: pays }] = await Promise.all([
@@ -105,6 +138,45 @@ export default function SubAgentDetail({ subAgent, onClose }) {
               <p className="text-slate-200 text-sm font-semibold truncate">{f.value}</p>
             </div>
           ))}
+        </div>
+
+        {/* Login account: a linked sub agent signs in and sees only their own candidates */}
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
+          <h3 className="text-sm font-bold text-slate-300 mb-1">Login account</h3>
+          <p className="text-slate-500 text-xs mb-3">
+            Link a user with the Sub Agent role. They can sign in and see only their own candidates.
+          </p>
+          {linkMsg && <p className="text-red-400 text-xs mb-2">{linkMsg}</p>}
+          {linkedId ? (
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-emerald-400 text-sm font-semibold truncate">
+                {loginProfiles.find(p => p.id === linkedId)?.full_name || 'Linked account'}
+              </p>
+              <button onClick={() => saveLink(null)} disabled={linkBusy}
+                className="text-xs text-red-400 bg-red-500/10 px-3 py-1.5 rounded-xl font-semibold disabled:opacity-50">
+                Unlink
+              </button>
+            </div>
+          ) : (
+            <div className="flex gap-2">
+              <select value={pickId} onChange={e => setPickId(e.target.value)}
+                className="flex-1 min-w-0 bg-slate-800 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500">
+                <option value="">Select a sub agent login…</option>
+                {loginProfiles.filter(p => !takenIds.includes(p.id)).map(p => (
+                  <option key={p.id} value={p.id}>{p.full_name || p.id.slice(0, 8)}</option>
+                ))}
+              </select>
+              <button onClick={() => pickId && saveLink(pickId)} disabled={!pickId || linkBusy}
+                className="bg-indigo-500 text-white text-sm font-bold px-4 rounded-xl disabled:opacity-40">
+                Link
+              </button>
+            </div>
+          )}
+          {!linkedId && loginProfiles.filter(p => !takenIds.includes(p.id)).length === 0 && (
+            <p className="text-slate-600 text-xs mt-2">
+              No unlinked Sub Agent logins. Create one on the Users page (role: Sub Agent) first.
+            </p>
+          )}
         </div>
 
         <div className="grid grid-cols-2 gap-3">

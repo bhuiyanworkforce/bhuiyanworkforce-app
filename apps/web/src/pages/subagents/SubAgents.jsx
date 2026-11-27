@@ -137,7 +137,7 @@ export default function SubAgents() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-extrabold text-slate-100">Sub Agents</h1>
-            <p className="text-slate-500 text-sm">{subAgents.length} total</p>
+            <p className="text-slate-500 text-sm">Bangladeshi worker suppliers · {subAgents.length} total</p>
           </div>
           <button onClick={() => setShowAdd(true)}
             className="flex items-center gap-2 bg-gradient-to-r from-pink-500 to-rose-600 text-white px-4 py-2.5 rounded-xl text-sm font-bold shadow-lg">
