@@ -26,20 +26,22 @@ const STATUS_INDEX = Object.fromEntries(WORKFLOW.map((s, i) => [s.key, i]))
 
 // Extracted helpers to fix nested ternary warnings (L145, L147, L148, L151 x2)
 function getStepIcon(done, active, stepKey) {
+  if (stepKey === 'rejected' && active) return <AlertCircle size={18} className="text-red-400 flex-none" />
   if (done) return <CheckCircle size={18} className="text-emerald-400 flex-none" />
   if (active) return <Clock size={18} className="text-amber-400 flex-none" />
-  if (stepKey === 'rejected') return <AlertCircle size={18} className="text-red-400 flex-none" />
   return <Circle size={18} className="text-slate-600 flex-none" />
 }
 
-function getStepLabelClass(active, done, future) {
+function getStepLabelClass(active, done, future, stepKey) {
+  if (active && stepKey === 'rejected') return 'text-sm font-semibold text-red-400'
   if (active) return 'text-sm font-semibold text-amber-300'
   if (done) return 'text-sm font-semibold text-emerald-400'
   if (future) return 'text-sm font-semibold text-slate-500'
   return 'text-sm font-semibold text-slate-300'
 }
 
-function getStepBgClass(active, done) {
+function getStepBgClass(active, done, stepKey) {
+  if (active && stepKey === 'rejected') return 'flex items-center gap-3 p-3 rounded-xl transition-colors text-left bg-red-500/10 border border-red-500/30'
   if (active) return 'flex items-center gap-3 p-3 rounded-xl transition-colors text-left bg-amber-500/10 border border-amber-500/30'
   if (done) return 'flex items-center gap-3 p-3 rounded-xl transition-colors text-left bg-emerald-500/5'
   return 'flex items-center gap-3 p-3 rounded-xl transition-colors text-left bg-slate-800/50'
@@ -193,20 +195,38 @@ export default function VisaDetail({ visa: initialVisa, onClose, onUpdated }) {
           <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Workflow</p>
           <div className="flex flex-col gap-2">
             {WORKFLOW.map((step, i) => {
-              const done = i < currentIndex
-              const active = i === currentIndex
-              const future = i > currentIndex
+              // Approved and Rejected are two different endings, not two stages in a row.
+              //  - approved: every stage including Approved is done (green tick)
+              //  - rejected: only Rejected is current (red); Approved is never marked done
+              const isApprovedStep = step.key === 'approved'
+              const isRejectedStep = step.key === 'rejected'
+              let done, active
+              if (isApprovedStep) {
+                done = visa.status === 'approved'
+                active = false
+              } else if (isRejectedStep) {
+                done = false
+                active = visa.status === 'rejected'
+              } else {
+                const progress = visa.status === 'rejected' || visa.status === 'approved'
+                  ? STATUS_INDEX.at_embassy + 1
+                  : currentIndex
+                done = i < progress
+                active = i === currentIndex
+              }
+              const future = !done && !active
               return (
                 <button key={step.key} onClick={() => !active && setStatus(step.key)} disabled={advancing}
-                  className={getStepBgClass(active, done)}>
+                  className={getStepBgClass(active, done, step.key)}>
                   {getStepIcon(done, active, step.key)}
                   <div className="flex-1">
-                    <p className={getStepLabelClass(active, done, future)}>
+                    <p className={getStepLabelClass(active, done, future, step.key)}>
                       {step.label}
                     </p>
                     <p className="text-xs text-slate-600">{step.desc}</p>
                   </div>
-                  {active && <span className="text-[10px] bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded-full font-bold">CURRENT</span>}
+                  {active && <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${isRejectedStep ? 'bg-red-500/20 text-red-400' : 'bg-amber-500/20 text-amber-400'}`}>{isRejectedStep ? 'REJECTED' : 'CURRENT'}</span>}
+                  {done && isApprovedStep && <span className="text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full font-bold">APPROVED</span>}
                 </button>
               )
             })}
