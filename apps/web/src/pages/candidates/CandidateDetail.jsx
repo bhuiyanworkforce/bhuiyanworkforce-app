@@ -6,6 +6,7 @@ import { X, Stamp, Receipt, Phone, Globe, Calendar, Paperclip, Trash2, ChevronDo
 import { useDropzone } from 'react-dropzone'
 import EditCandidateModal from './EditCandidateModal'
 import { Spinner } from '../../components/Skeleton'
+import { useAuth } from '../../hooks/useAuth'
 
 const PIPELINE_STAGES = [
   { key: 'new',           label: 'New',            color: 'bg-slate-500/15 text-slate-400'     },
@@ -37,6 +38,10 @@ const STATUS_COLOR_I = {
 }
 
 export default function CandidateDetail({ candidate: initialCandidate, onClose, viewOnly = false }) {
+  const { profile } = useAuth()
+  // Assistants can upload and view documents but not delete them (the database
+  // also blocks it; this just hides the button).
+  const canDeleteDocs = profile?.role === 'owner' || profile?.role === 'manager'
   const [candidate, setCandidate]         = useState(initialCandidate)
   const [passports, setPassports]         = useState([])
   const [invoices, setInvoices]           = useState([])
@@ -425,17 +430,19 @@ export default function CandidateDetail({ candidate: initialCandidate, onClose, 
                     </div>
                     <div className="flex items-center gap-3 flex-none">
                       {doc.type && <span className="text-slate-600 text-xs">{doc.type}</span>}
-                      <button
-                        onClick={() => setConfirmDeleteDoc(isPendingDelete ? null : doc)}
-                        aria-label={isPendingDelete ? 'Cancel delete' : `Delete ${doc.name}`}
-                        className={isPendingDelete ? 'text-slate-500' : 'text-red-400'}>
-                        <Trash2 size={14}/>
-                      </button>
+                      {canDeleteDocs && (
+                        <button
+                          onClick={() => setConfirmDeleteDoc(isPendingDelete ? null : doc)}
+                          aria-label={isPendingDelete ? 'Cancel delete' : `Delete ${doc.name}`}
+                          className={isPendingDelete ? 'text-slate-500' : 'text-red-400'}>
+                          <Trash2 size={14}/>
+                        </button>
+                      )}
                     </div>
                   </div>
 
                   {/* In-UI confirm row — no native confirm() dialog */}
-                  {isPendingDelete && (
+                  {canDeleteDocs && isPendingDelete && (
                     <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-800">
                       <p className="text-xs text-slate-400">Delete "{doc.name}"?</p>
                       <div className="flex gap-2">
