@@ -20,7 +20,18 @@ where n.nspname = 'public' and c.relkind = 'r' and c.relrowsecurity
   and not exists (select 1 from pg_policies p where p.schemaname = 'public' and p.tablename = c.relname)
 order by 1;
 
--- 3) EXPECTED: zero rows. Policies that apply to anon / PUBLIC or use a
+-- 3a) EXPECTED: zero rows. Legacy catch-all policies ("any signed-in user") -
+--     the repo never created these, but they exist live and override the
+--     owner+manager rules because policies are OR-ed.
+select tablename, policyname, cmd, qual, with_check
+from pg_policies
+where schemaname = 'public'
+  and (qual ilike '%auth.role() = ''authenticated''%'
+       or with_check ilike '%auth.role() = ''authenticated''%'
+       or qual = 'true' or with_check = 'true')
+order by tablename, policyname;
+
+-- 3b) EXPECTED: zero rows. Policies that apply to anon / PUBLIC or use a
 --    constant-true condition.
 select tablename, policyname, cmd, roles, qual, with_check
 from pg_policies
