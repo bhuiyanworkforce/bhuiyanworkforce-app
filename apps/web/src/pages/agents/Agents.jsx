@@ -2,7 +2,7 @@ import PropTypes from 'prop-types'
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { safeDelete } from '../../lib/utils'
-import { Plus, Search, Globe, X, ChevronRight, AlertTriangle, RefreshCw, Trash2 } from 'lucide-react'
+import { Plus, Search, Globe, X, ChevronRight, AlertTriangle, RefreshCw, Trash2, Pencil } from 'lucide-react'
 import { ListSkeleton } from '../../components/Skeleton'
 
 const REGISTRY_OPTS = [
@@ -56,8 +56,17 @@ function emptyForm() {
   }
 }
 
-function AddAgentModal({ onClose, onSaved }) {
-  const [form, setForm] = useState(emptyForm())
+function formFromAgent(a) {
+  const f = emptyForm()
+  Object.keys(f).forEach(k => { f[k] = a[k] ?? '' })
+  f.status = a.status || 'active'
+  return f
+}
+
+// Used for both adding a new agent and editing an existing one.
+function AddAgentModal({ agent, onClose, onSaved }) {
+  const isEdit = !!agent
+  const [form, setForm] = useState(isEdit ? formFromAgent(agent) : emptyForm())
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }))
@@ -78,14 +87,17 @@ function AddAgentModal({ onClose, onSaved }) {
       setSaving(false)
       return
     }
-    const { error: err } = await supabase.from('agents').insert({
+    const payload = {
       ...form,
+      name: form.name.trim(),
       years_active: form.years_active === '' ? null : Number.parseFloat(form.years_active),
       notes: form.notes || null,
-      created_by: user.id,
-    })
+    }
+    const { data: saved, error: err } = isEdit
+      ? await supabase.from('agents').update(payload).eq('id', agent.id).select().single()
+      : await supabase.from('agents').insert({ ...payload, created_by: user.id }).select().single()
     if (err) { setError(err.message); setSaving(false); return }
-    onSaved()
+    onSaved(saved)
   }
 
   const preview = computeRisk(form)
@@ -96,7 +108,7 @@ function AddAgentModal({ onClose, onSaved }) {
     <div className="fixed inset-0 z-50 bg-black/70 flex items-end justify-center">
       <div className="bg-[#0D1626] border border-slate-800 rounded-t-2xl w-full max-w-lg max-h-[88vh] overflow-y-auto mb-16">
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800 sticky top-0 bg-[#0D1626]">
-          <h2 className="text-slate-100 font-bold text-lg">Add Agent</h2>
+          <h2 className="text-slate-100 font-bold text-lg">{isEdit ? 'Edit Agent' : 'Add Agent'}</h2>
           <button type="button" onClick={onClose}><X size={20} className="text-slate-400" /></button>
         </div>
         <div className="p-5 pb-10 flex flex-col gap-4">
@@ -165,6 +177,16 @@ function AddAgentModal({ onClose, onSaved }) {
             <textarea value={form.notes} onChange={e => set('notes', e.target.value)} rows={2} className={`${inputClass} resize-none`} />
           </label>
 
+          {isEdit && (
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-slate-500 font-semibold">Status</span>
+              <select value={form.status} onChange={e => set('status', e.target.value)} className={inputClass}>
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+              </select>
+            </label>
+          )}
+
           <div className={`flex items-center justify-between rounded-xl px-4 py-3 ${style.bg}`}>
             <span className="text-xs text-slate-400">Computed risk with current fields</span>
             <span className={`text-sm font-bold ${style.text}`}>{preview.level.toUpperCase()} · {preview.total}</span>
@@ -172,7 +194,7 @@ function AddAgentModal({ onClose, onSaved }) {
 
           <button type="button" onClick={handleSave} disabled={saving || !form.name.trim()}
             className="w-full bg-gradient-to-r from-indigo-500 to-violet-600 text-white py-3 rounded-xl font-bold text-sm mt-1 disabled:opacity-50">
-            {saving ? 'Saving…' : 'Add Agent'}
+            {saving ? 'Saving…' : isEdit ? 'Save changes' : 'Add Agent'}
           </button>
         </div>
       </div>
@@ -181,11 +203,12 @@ function AddAgentModal({ onClose, onSaved }) {
 }
 
 AddAgentModal.propTypes = {
+  agent: PropTypes.object,
   onClose: PropTypes.func.isRequired,
   onSaved: PropTypes.func.isRequired,
 }
 
-function AgentDetail({ agent, onClose }) {
+function AgentDetail({ agent, onClose, onEdit }) {
   useEffect(() => {
     function handleKey(e) { if (e.key === 'Escape') onClose() }
     document.addEventListener('keydown', handleKey)
@@ -214,6 +237,9 @@ function AgentDetail({ agent, onClose }) {
           <p className="text-slate-500 text-xs">{[agent.country, agent.corridor].filter(Boolean).join(' · ') || 'No location set'}</p>
         </div>
         <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${style.bg} ${style.text}`}>{risk.level.toUpperCase()} · {risk.total}</span>
+        <button type="button" onClick={() => onEdit(agent)} className="flex items-center gap-1.5 bg-slate-800 text-slate-200 text-xs font-bold px-3 py-2 rounded-xl">
+          <Pencil size={13} /> Edit
+        </button>
       </div>
 
       <div className="p-4 flex flex-col gap-4">
@@ -272,6 +298,7 @@ AgentDetail.propTypes = {
     notes: PropTypes.string,
   }).isRequired,
   onClose: PropTypes.func.isRequired,
+  onEdit: PropTypes.func.isRequired,
 }
 
 export default function Agents() {
@@ -283,6 +310,7 @@ export default function Agents() {
   const [riskFilter, setRiskFilter] = useState('all')
   const [showAdd, setShowAdd] = useState(false)
   const [selected, setSelected] = useState(null)
+  const [editing, setEditing] = useState(null)
   const [confirmDelete, setConfirmDelete] = useState(null)
 
   useEffect(() => { fetchAgents() }, [])
@@ -410,7 +438,11 @@ export default function Agents() {
       )}
 
       {showAdd && <AddAgentModal onClose={() => setShowAdd(false)} onSaved={() => { setShowAdd(false); fetchAgents() }} />}
-      {selected && <AgentDetail agent={selected} onClose={() => setSelected(null)} />}
+      {selected && <AgentDetail agent={selected} onClose={() => setSelected(null)} onEdit={a => { setSelected(null); setEditing(a) }} />}
+      {editing && (
+        <AddAgentModal agent={editing} onClose={() => setEditing(null)}
+          onSaved={saved => { setEditing(null); setSelected(saved || null); fetchAgents() }} />
+      )}
     </div>
   )
 }
