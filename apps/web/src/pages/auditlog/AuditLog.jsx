@@ -43,6 +43,7 @@ export default function AuditLog() {
   const [offset, setOffset]           = useState(0)
   const [total, setTotal]             = useState(0)
   const [hasMore, setHasMore]         = useState(false)
+  const [names, setNames]               = useState({})   // user id -> full name
 
   const fetchLogs = useCallback(async (newOffset = 0, tableFilter = filterTable, actionFilter = filterAction) => {
     if (newOffset === 0) setLoading(true); else setLoadingMore(true)
@@ -62,6 +63,12 @@ export default function AuditLog() {
 
       if (dbError) throw dbError
       const rows = data || []
+      // Look up who made each change
+      const ids = [...new Set(rows.map(r => r.changed_by || r.user_id).filter(Boolean))]
+      if (ids.length) {
+        const { data: profs } = await supabase.from('profiles').select('id, full_name, role').in('id', ids)
+        if (profs) setNames(prev => ({ ...prev, ...Object.fromEntries(profs.map(p => [p.id, p.full_name || p.role])) }))
+      }
       setLogs(prev => newOffset === 0 ? rows : [...prev, ...rows])
       setTotal(count || 0)
       setOffset(newOffset)
@@ -86,7 +93,7 @@ export default function AuditLog() {
     fetchLogs(0, filterTable, a)
   }
 
-  const tables = ['all', 'invoices', 'passports', 'payroll', 'refunds', 'expenses', 'candidates', 'loans', 'cheques']
+  const tables = ['all', 'users', 'sub_agents', 'employees', 'candidates', 'passports', 'invoices', 'payments', 'expenses', 'employee_payroll', 'payroll', 'sub_agent_payouts', 'refunds', 'cheques', 'vendors']
   const actionColor = {
     INSERT: 'bg-emerald-500/15 text-emerald-400',
     UPDATE: 'bg-indigo-500/15 text-indigo-400',
@@ -175,6 +182,7 @@ export default function AuditLog() {
                           {l.action}
                         </span>
                         <span className="text-sm font-semibold text-slate-300 truncate">{l.table_name}</span>
+                        <span className="text-xs text-slate-500 truncate">by {names[l.changed_by || l.user_id] || (l.changed_by || l.user_id ? 'unknown user' : 'system')}</span>
                       </div>
                       <div className="flex items-center gap-2 flex-none">
                         <span className="text-xs text-slate-500">{new Date(l.created_at).toLocaleDateString()}</span>
