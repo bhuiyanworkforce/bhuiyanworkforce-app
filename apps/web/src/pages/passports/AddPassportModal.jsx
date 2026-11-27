@@ -55,7 +55,8 @@ export default function AddPassportModal({ open, onClose, onSaved }) {
       expiry_date: form.expiry_date || null,
       place_of_issue: form.place_of_issue || null,
       current_location: form.current_location,
-      status: 'received',
+      // At the Embassy means visa stamping is in progress.
+      status: form.current_location === 'Embassy' ? 'visa_stamping' : 'received',
       created_by: user.id,
     })
     if (err) { setError(err.message); setSaving(false); return }
@@ -118,6 +119,9 @@ export default function AddPassportModal({ open, onClose, onSaved }) {
               <option key={l} value={l}>{l}</option>
             ))}
           </select>
+          {form.current_location === 'Embassy' && (
+            <p className="text-[11px] text-slate-500 mt-1.5">At the Embassy = visa stamping in progress. Status will start as Visa Stamping.</p>
+          )}
         </div>
 
         <button onClick={handleSave} disabled={saving}

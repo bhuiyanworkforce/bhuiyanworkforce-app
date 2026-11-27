@@ -8,6 +8,19 @@ const STATUSES = [
   'calling_list','visa_stamping','mofa','traveling','returned','cancelled'
 ]
 
+const LOCATIONS = ['Office', 'Embassy', 'Sub Agent', 'Candidate', 'Other']
+
+// Business rule: a passport at the Embassy is being processed for visa
+// stamping. Moving it there lifts an earlier status to 'visa_stamping'; it
+// never moves a passport backwards (mofa / traveling / returned / cancelled
+// are left alone).
+function statusForLocation(location, status) {
+  if (String(location || '').trim().toLowerCase() !== 'embassy') return status
+  const idx = STATUSES.indexOf(status)
+  const stampIdx = STATUSES.indexOf('visa_stamping')
+  return idx !== -1 && idx < stampIdx ? 'visa_stamping' : status
+}
+
 export default function EditPassportModal({ passport, onClose, onSaved }) {
   const [form, setForm] = useState({
     passport_no:      passport.passport_no      || '',
@@ -25,6 +38,7 @@ export default function EditPassportModal({ passport, onClose, onSaved }) {
   async function handleSave() {
     if (!form.passport_no.trim()) { setError('Passport number is required'); return }
     setSaving(true)
+    const finalStatus = statusForLocation(form.current_location, form.status)
     const { error: err } = await supabase
       .from('passports')
       .update({
@@ -33,12 +47,12 @@ export default function EditPassportModal({ passport, onClose, onSaved }) {
         expiry_date:      form.expiry_date      || null,
         place_of_issue:   form.place_of_issue   || null,
         current_location: form.current_location || null,
-        status:           form.status,
+        status:           finalStatus,
         notes:            form.notes            || null,
       })
       .eq('id', passport.id)
     if (err) { setError(err.message); setSaving(false); return }
-    onSaved({ ...passport, ...form })
+    onSaved({ ...passport, ...form, status: finalStatus })
   }
 
   return (
@@ -79,9 +93,21 @@ export default function EditPassportModal({ passport, onClose, onSaved }) {
 
           <label className="flex flex-col gap-1">
             <span className="text-xs text-slate-500 font-semibold">Current Location</span>
-            <input value={form.current_location} onChange={e => set('current_location', e.target.value)}
-              placeholder="e.g. Office, Embassy, Candidate"
-              className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500"/>
+            <select value={form.current_location}
+              onChange={e => setForm(p => ({
+                ...p,
+                current_location: e.target.value,
+                status: statusForLocation(e.target.value, p.status),
+              }))}
+              className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500">
+              <option value="">Not set</option>
+              {/* keep any older free-text value that is not in the standard list */}
+              {form.current_location && !LOCATIONS.includes(form.current_location) && (
+                <option value={form.current_location}>{form.current_location}</option>
+              )}
+              {LOCATIONS.map(l => <option key={l} value={l}>{l}</option>)}
+            </select>
+            <span className="text-[11px] text-slate-600">At the Embassy = visa stamping in progress</span>
           </label>
 
           <label className="flex flex-col gap-1">

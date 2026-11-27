@@ -14,6 +14,8 @@ const PAGE_SIZE = 20
 const SEARCH_CAP = 200
 
 async function fetchPassportsBySearch(supabaseClient, { searchTerm, status, from, to, newOffset }) {
+  const term = searchTerm?.trim()
+
   function base() {
     let q = supabaseClient
       .from('passports')
@@ -21,12 +23,14 @@ async function fetchPassportsBySearch(supabaseClient, { searchTerm, status, from
       .order('created_at', { ascending: false })
 
     if (status && status !== 'all') q = q.eq('status', status)
+    // A returned passport is back with the candidate: it leaves the working
+    // list. It is NOT deleted — it still shows when you search for it or pick
+    // the "returned" filter, and stays in reports and the candidate's history.
+    else if (!term) q = q.neq('status', 'returned')
     if (from) q = q.gte('created_at', from)
     if (to)   q = q.lte('created_at', `${to}T23:59:59`)
     return q
   }
-
-  const term = searchTerm?.trim()
 
   if (!term) {
     const { data } = await base().range(newOffset, newOffset + PAGE_SIZE - 1)
@@ -117,7 +121,8 @@ export default function Passports() {
   }, [search, statusFilter, dateFrom, dateTo, fetchPassports])
 
   function handleUpdated(newStatus, updatedPassport) {
-    setPassports(prev => prev.map(p => {
+    const hideNow = newStatus === 'returned' && statusFilter === 'all' && !search.trim()
+    setPassports(prev => (hideNow ? prev.filter(p => p.id !== selected.id) : prev).map(p => {
       if (p.id !== selected.id) return p
       return updatedPassport ? { ...p, status: newStatus, ...updatedPassport } : { ...p, status: newStatus }
     }))
@@ -278,6 +283,9 @@ export default function Passports() {
         )}
 
         {!bulkMode && !isAgent && <p className="text-slate-600 text-xs text-center">Long press a passport to select multiple</p>}
+        {statusFilter === 'all' && !search.trim() && (
+          <p className="text-slate-600 text-xs text-center">Returned passports are hidden. Search for one, or use Filters → returned.</p>
+        )}
 
         {loading ? (
           <ListSkeleton rows={7} hasSearch={false} hasTabs={true} />
