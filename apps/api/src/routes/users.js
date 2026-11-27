@@ -36,11 +36,11 @@ function getSupabase(env) {
 async function getCallerProfile(c) {
   const authHeader = c.req.header('Authorization') ?? ''
   const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : ''
-  if (!token) return { error: 'Unauthorized' }
+  if (!token) return { error: 'Unauthorized', reason: 'no_token' }
 
   if (!c.env.SUPABASE_URL || !c.env.SUPABASE_ANON_KEY || !c.env.SUPABASE_SERVICE_KEY) {
     console.error('[users] Missing Supabase environment configuration')
-    return { error: 'Unauthorized' }
+    return { error: 'Unauthorized', reason: 'server_config_missing' }
   }
 
   const { data: { user }, error: authErr } = await createClient(
@@ -51,7 +51,7 @@ async function getCallerProfile(c) {
 
   if (authErr || !user) {
     console.error('[users] Auth failed:', authErr?.message ?? 'no user')
-    return { error: 'Unauthorized' }
+    return { error: 'Unauthorized', reason: 'token_rejected' }
   }
 
   const { data: profile, error: profileErr } = await getSupabase(c.env)
@@ -62,16 +62,27 @@ async function getCallerProfile(c) {
 
   if (profileErr || !profile) {
     console.error('[users] Profile fetch failed:', profileErr?.message ?? 'not found')
-    return { error: 'Unauthorized' }
+    return { error: 'Unauthorized', reason: 'profile_lookup_failed' }
   }
 
   return { profile }
 }
 
+// People and role changes are made with the service key, so the database
+// audit trigger cannot see who did them. Record them here with the caller's id.
+async function writeAudit(supabase, caller, action, targetId, oldData, newData) {
+  const { error } = await supabase.from('audit_logs').insert({
+    table_name: 'users', action, record_id: targetId ?? null,
+    old_data: oldData ?? null, new_data: newData ?? null,
+    changed_by: caller.id, user_id: caller.id,
+  })
+  if (error) console.error('[users] audit write failed:', error.message)
+}
+
 // ── GET /api/v1/users ─────────────────────────────────────────────────────────
 app.get('/', async (c) => {
   const result = await getCallerProfile(c)
-  if (result.error) return c.json({ error: result.error }, 401)
+  if (result.error) return c.json({ error: result.error, reason: result.reason }, 401)
 
   const { profile: caller } = result
   if (!['owner', 'manager'].includes(caller.role)) {
@@ -112,7 +123,7 @@ app.get('/', async (c) => {
 // Creates a user with email + password + role (no invite email needed)
 app.post('/', async (c) => {
   const result = await getCallerProfile(c)
-  if (result.error) return c.json({ error: result.error }, 401)
+  if (result.error) return c.json({ error: result.error, reason: result.reason }, 401)
 
   const { profile: caller } = result
   if (!['owner', 'manager'].includes(caller.role)) {
@@ -174,13 +185,16 @@ app.post('/', async (c) => {
     return c.json({ error: 'Could not set up the user profile. Nothing was created.' }, 500)
   }
 
+  await writeAudit(supabase, caller, 'INSERT', data.user.id, null,
+    { email: data.user.email, full_name: full_name?.trim() || null, role })
+
   return c.json({ user: { id: data.user.id, email: data.user.email, role } })
 })
 
 // ── PATCH /api/v1/users/:id/role ─────────────────────────────────────────────
 app.patch('/:id/role', async (c) => {
   const result = await getCallerProfile(c)
-  if (result.error) return c.json({ error: result.error }, 401)
+  if (result.error) return c.json({ error: result.error, reason: result.reason }, 401)
 
   const { profile: caller } = result
   if (!['owner', 'manager'].includes(caller.role)) {
@@ -230,13 +244,15 @@ app.patch('/:id/role', async (c) => {
     return c.json({ error: 'Could not update role' }, 500)
   }
 
+  await writeAudit(supabase, caller, 'UPDATE', targetId, { role: target.role }, { role })
+
   return c.json({ success: true })
 })
 
 // ── DELETE /api/v1/users/:id ──────────────────────────────────────────────────
 app.delete('/:id', async (c) => {
   const result = await getCallerProfile(c)
-  if (result.error) return c.json({ error: result.error }, 401)
+  if (result.error) return c.json({ error: result.error, reason: result.reason }, 401)
 
   const { profile: caller } = result
   if (!['owner', 'manager'].includes(caller.role)) {
@@ -266,11 +282,16 @@ app.delete('/:id', async (c) => {
     return c.json({ error: 'Only the owner can delete a manager account' }, 403)
   }
 
+  const { data: targetProfile } = await supabase
+    .from('profiles').select('full_name, role').eq('id', targetId).maybeSingle()
+
   const { error } = await supabase.auth.admin.deleteUser(targetId)
   if (error) {
     console.error('[users] deleteUser failed:', error.message)
     return c.json({ error: 'Could not delete user' }, 500)
   }
+
+  await writeAudit(supabase, caller, 'DELETE', targetId, targetProfile ?? { role: target.role }, null)
 
   return c.json({ success: true })
 })
