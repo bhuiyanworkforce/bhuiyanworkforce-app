@@ -44,7 +44,7 @@ async function fetchAllRows(supabaseClient, table) {
 }
 
 async function runFullBackup(supabaseClient) {
-  const tables = ['candidates','passports','invoices','invoice_items','payments','agents','expenses','vendors','loans','cheques','payroll','refunds','employees','visa_applications']
+  const tables = ['candidates','passports','invoices','invoice_items','payments','agents','expenses','vendors','cheques','payroll','refunds','employees','visa_applications']
   const backup = { exported_at: new Date().toISOString(), warnings: [] }
 
   // Fetch all tables in parallel — each table is itself paginated
@@ -145,6 +145,8 @@ export default function Reports() {
         { data: passports },
         { data: agents },
         { data: expenses },
+        { data: finSummary },
+        { data: finMonthly },
       ] = await Promise.all([
         supabase.from('invoices')
           .select('total, status, issued_at, sub_agent_id, candidates(full_name)')
@@ -154,6 +156,9 @@ export default function Reports() {
         supabase.from('sub_agents').select('id, full_name, commission_rate'),
         supabase.from('expenses').select('amount, category, date')
           .gte('date', fromDay).lte('date', toDay),
+        // Money actually received minus refunds paid, and all expenses, from the database.
+        supabase.rpc('finance_summary', { p_from: fromDay, p_to: toDay }),
+        supabase.rpc('finance_monthly', { p_from: fromDay, p_to: toDay }),
       ])
 
       if (invErr) throw invErr
@@ -166,7 +171,10 @@ export default function Reports() {
         const month = MONTHS[new Date(inv.issued_at).getMonth()]
         revenueMap[month] = (revenueMap[month] || 0) + inv.total
       })
-      const revenue = Object.entries(revenueMap).map(([month, amount]) => ({ month, amount }))
+      const fin = Array.isArray(finSummary) ? finSummary[0] : finSummary
+      const revenue = Array.isArray(finMonthly) && finMonthly.length
+        ? finMonthly.map(m => ({ month: MONTHS[new Date(m.month + 'T00:00:00').getMonth()], amount: (Number(m.revenue) || 0) - (Number(m.refunds) || 0) }))
+        : Object.entries(revenueMap).map(([month, amount]) => ({ month, amount }))
 
       const statusMap = {}
       passports?.forEach(p => { statusMap[p.status] = (statusMap[p.status] || 0) + 1 })
@@ -180,11 +188,15 @@ export default function Reports() {
         return { ...agent, revenue: paid, commission, invoiceCount: agentInvoices.length }
       })
 
-      const totalRevenue = invList.filter(i => i.status === 'paid').reduce((s, i) => s + i.total, 0)
+      const refundsTotal = fin ? Number(fin.refunds) || 0 : 0
+      const totalRevenue = fin
+        ? (Number(fin.revenue) || 0) - refundsTotal
+        : invList.filter(i => i.status === 'paid').reduce((s, i) => s + i.total, 0)
 
       setData({
         revenue,
-        expenses: expList.reduce((s, e) => s + e.amount, 0),
+        expenses: fin ? Number(fin.expenses) || 0 : expList.reduce((s, e) => s + e.amount, 0),
+        refunds: refundsTotal,
         passportsByStatus,
         agentPerformance: agentPerformance.sort((a, b) => b.revenue - a.revenue),
         totalRevenue,
@@ -375,8 +387,8 @@ export default function Reports() {
           <>
             <div className="grid grid-cols-2 gap-3">
               {[
-                { label: 'Total Revenue', value: '৳' + data.totalRevenue.toLocaleString(), icon: TrendingUp, color: 'from-emerald-500 to-teal-600' },
-                { label: 'Net Profit', value: '৳' + Math.max(0, data.totalRevenue - data.expenses).toLocaleString(), icon: Wallet, color: 'from-indigo-500 to-violet-600' },
+                { label: 'Revenue (net of refunds)', value: '৳' + data.totalRevenue.toLocaleString(), icon: TrendingUp, color: 'from-emerald-500 to-teal-600' },
+                { label: 'Net Profit', value: '৳' + (data.totalRevenue - data.expenses).toLocaleString(), icon: Wallet, color: 'from-indigo-500 to-violet-600' },
                 { label: 'Paid Invoices', value: data.paidInvoices, icon: FileText, color: 'from-emerald-500 to-teal-600' },
                 { label: 'Unpaid', value: data.unpaidInvoices, icon: Calendar, color: 'from-red-500 to-rose-600' },
               ].map(({ label, value, icon: Icon, color }) => (
