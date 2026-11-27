@@ -11,8 +11,10 @@ export default function EditCandidateModal({ candidate, onClose, onSaved }) {
     address:       candidate.address       || '',
     date_of_birth: candidate.date_of_birth || '',
     sub_agent_id:      candidate.sub_agent_id      || '',
+    job_category_id:   candidate.job_category_id   || '',
   })
   const [agents, setAgents]   = useState([])
+  const [categories, setCategories] = useState([])
   const [saving, setSaving]   = useState(false)
   const [error,  setError]    = useState('')
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }))
@@ -27,6 +29,8 @@ export default function EditCandidateModal({ candidate, onClose, onSaved }) {
   useEffect(() => {
     supabase.from('sub_agents').select('id, full_name').order('full_name')
       .then(({ data }) => setAgents(data || []))
+    supabase.from('job_categories').select('id, name, icon').order('sort_order')
+      .then(({ data }) => setCategories(data || []))
   }, [])
 
   async function handleSave() {
@@ -40,6 +44,7 @@ export default function EditCandidateModal({ candidate, onClose, onSaved }) {
       name: form.full_name,
       date_of_birth: form.date_of_birth || null,
       sub_agent_id: form.sub_agent_id || null,
+      job_category_id: form.job_category_id || null,
     }
     const { error: err } = await supabase
       .from('candidates')
@@ -125,6 +130,24 @@ export default function EditCandidateModal({ candidate, onClose, onSaved }) {
             >
               <option value="">No sub agent</option>
               {agents.map(a => <option key={a.id} value={a.id}>{a.full_name}</option>)}
+            </select>
+          </div>
+
+          <div>
+            <label
+              htmlFor="edit-candidate-job_category_id"
+              className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-1.5"
+            >
+              Job Category
+            </label>
+            <select
+              id="edit-candidate-job_category_id"
+              value={form.job_category_id}
+              onChange={e => set('job_category_id', e.target.value)}
+              className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm text-slate-100 focus:outline-none focus:border-emerald-500"
+            >
+              <option value="">No job category</option>
+              {categories.map(c => <option key={c.id} value={c.id}>{c.icon ? `${c.icon} ` : ''}{c.name}</option>)}
             </select>
           </div>
 

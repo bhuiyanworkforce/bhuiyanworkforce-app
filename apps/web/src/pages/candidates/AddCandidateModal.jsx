@@ -5,9 +5,10 @@ import Modal from '../../components/Modal'
 
 export default function AddCandidateModal({ open, onClose, onSaved }) {
   const [agents, setAgents] = useState([])
+  const [categories, setCategories] = useState([])
   const [form, setForm] = useState({
     full_name: '', phone: '', nationality: 'Bangladeshi',
-    address: '', date_of_birth: '', sub_agent_id: ''
+    address: '', date_of_birth: '', sub_agent_id: '', job_category_id: ''
   })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -16,10 +17,12 @@ export default function AddCandidateModal({ open, onClose, onSaved }) {
   useEffect(() => {
     supabase.from('sub_agents').select('id, full_name').order('full_name')
       .then(({ data }) => setAgents(data || []))
+    supabase.from('job_categories').select('id, name, icon').order('sort_order')
+      .then(({ data }) => setCategories(data || []))
   }, [])
 
   function reset() {
-    setForm({ full_name: '', phone: '', nationality: 'Bangladeshi', address: '', date_of_birth: '', sub_agent_id: '' })
+    setForm({ full_name: '', phone: '', nationality: 'Bangladeshi', address: '', date_of_birth: '', sub_agent_id: '', job_category_id: '' })
     setError('')
     setDuplicate(null)
   }
@@ -34,7 +37,9 @@ export default function AddCandidateModal({ open, onClose, onSaved }) {
       full_name: form.full_name, phone: form.phone,
       nationality: form.nationality, address: form.address,
       date_of_birth: form.date_of_birth || null,
-      sub_agent_id: form.sub_agent_id || null, created_by: user.id,
+      sub_agent_id: form.sub_agent_id || null,
+      job_category_id: form.job_category_id || null,
+      created_by: user.id,
     })
     if (error) { setError(error.message); setSaving(false) }
     else { reset(); onSaved() }
@@ -149,6 +154,16 @@ export default function AddCandidateModal({ open, onClose, onSaved }) {
             className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm text-slate-100 focus:outline-none focus:border-indigo-500">
             <option value="">No sub agent assigned</option>
             {agents.map(a => <option key={a.id} value={a.id}>{a.full_name}</option>)}
+          </select>
+        </div>
+        <div>
+          <label htmlFor="candidate-field-job_category_id" className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-1.5">
+            Job Category <span className="text-slate-600 font-normal">(optional)</span>
+          </label>
+          <select id="candidate-field-job_category_id" value={form.job_category_id} onChange={e => setForm(f => ({ ...f, job_category_id: e.target.value }))}
+            className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm text-slate-100 focus:outline-none focus:border-indigo-500">
+            <option value="">No job category</option>
+            {categories.map(c => <option key={c.id} value={c.id}>{c.icon ? `${c.icon} ` : ''}{c.name}</option>)}
           </select>
         </div>
         {!duplicate && (
