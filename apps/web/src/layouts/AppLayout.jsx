@@ -4,7 +4,7 @@ import {
   LayoutDashboard, FileText, Stamp, Users,
   Wallet, LogOut, Menu, X, UserCircle,
   Settings, BarChart2, TrendingDown, Building2,
-  Banknote, CreditCard, DollarSign, RotateCcw,
+  CreditCard, DollarSign, RotateCcw,
   ClipboardList, Briefcase, Shield, Globe, Handshake, Target
 } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
@@ -31,7 +31,6 @@ const NAV = [
   { to: 'accounts', label: 'Accounts', icon: Wallet, group: 'finance' },
   { to: 'expenses', label: 'Expenses', icon: TrendingDown, group: 'finance' },
   { to: 'vendors', label: 'Vendors', icon: Building2, group: 'finance' },
-  { to: 'loans', label: 'Loans', icon: Banknote, group: 'finance' },
   { to: 'payroll', label: 'Payroll', icon: CreditCard, group: 'finance' },
   { to: 'cheques', label: 'Cheques', icon: DollarSign, group: 'finance' },
   { to: 'refunds', label: 'Refunds', icon: RotateCcw, group: 'finance' },
