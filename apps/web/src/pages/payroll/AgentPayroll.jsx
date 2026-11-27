@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase'
 import { Plus, X } from 'lucide-react'
 import { calcSubAgentNet } from '../../lib/utils'
 import { Spinner } from '../../components/Skeleton'
+import VoucherButton from '../../components/VoucherButton'
 
 const PAGE_SIZE = 20
 
@@ -143,11 +144,10 @@ AddAgentPayrollModal.propTypes = {
 
 export function AgentPayrollDetail({ record, onClose, onUpdated }) {
   const [updating, setUpdating] = useState(false)
+  const [justPaid, setJustPaid] = useState(false)
 
-  // Fix: same gap as EmployeePayrollDetail.markPaid — neither write was
-  // checked, so a failed status update looked identical to success, and a
-  // failed expense insert after a successful status update would leave
-  // payroll marked "paid" with no matching expense record.
+  // The database creates the commission expense (and its voucher) in the same
+  // transaction as this status change, exactly once.
   async function markPaid() {
     setUpdating(true)
     const { error: statusErr } = await supabase.from('payroll').update({ status: 'paid', paid_at: new Date().toISOString() }).eq('id', record.id)
@@ -156,20 +156,9 @@ export function AgentPayrollDetail({ record, onClose, onUpdated }) {
       setUpdating(false)
       return
     }
-    const net = Number(record.net_amount || record.net_salary) || 0
-    const { error: expenseErr } = await supabase.from('expenses').insert({
-      date: new Date().toISOString().split('T')[0],
-      category: 'salary',
-      description: `Agent payroll — ${record.sub_agents?.full_name || 'agent'}`,
-      amount: net,
-      payment_method: record.payment_method || 'cash',
-    })
-    if (expenseErr) {
-      alert(`Marked as paid, but the matching expense record failed to save (${expenseErr.message}). Please add it manually in Expenses so the books stay accurate.`)
-    }
+    setJustPaid(true)
     onUpdated()
     setUpdating(false)
-    onClose()
   }
 
   const net = record.net_amount || record.net_salary || 0
@@ -214,7 +203,10 @@ export function AgentPayrollDetail({ record, onClose, onUpdated }) {
             <p className="text-slate-200 text-sm font-semibold">{record.paid_at ? new Date(record.paid_at).toLocaleDateString() : '—'}</p>
           </div>
         </div>
-        {record.status === 'pending' && (
+        {(record.status === 'paid' || justPaid) && (
+          <VoucherButton sourceType="payroll" sourceId={record.id} />
+        )}
+        {record.status === 'pending' && !justPaid && (
           <button onClick={markPaid} disabled={updating}
             className="w-full bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-bold py-3.5 rounded-2xl disabled:opacity-50">
             {updating ? 'Updating…' : '✓ Mark as Paid'}

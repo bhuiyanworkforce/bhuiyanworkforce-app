@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase'
 import { Plus, X } from 'lucide-react'
 import { calcEmpNet } from '../../lib/utils'
 import { Spinner } from '../../components/Skeleton'
+import VoucherButton from '../../components/VoucherButton'
 
 const PAGE_SIZE = 20
 
@@ -153,12 +154,10 @@ AddEmployeePayrollModal.propTypes = {
 
 export function EmployeePayrollDetail({ record, onClose, onUpdated }) {
   const [updating, setUpdating] = useState(false)
+  const [justPaid, setJustPaid] = useState(false)
 
-  // Fix: neither write here was checked. If the status update silently
-  // failed, the record would still say "unpaid" with no explanation. Worse,
-  // if the status update succeeded but the expense insert failed, the
-  // payroll would show "paid" with no matching expense record — money
-  // marked as gone with no line item explaining where it went.
+  // The database creates the salary expense (and its voucher) in the same
+  // transaction as this status change, exactly once. Nothing else to write here.
   async function markPaid() {
     setUpdating(true)
     const { error: statusErr } = await supabase.from('employee_payroll').update({ status: 'paid', payment_date: new Date().toISOString().split('T')[0] }).eq('id', record.id)
@@ -167,20 +166,9 @@ export function EmployeePayrollDetail({ record, onClose, onUpdated }) {
       setUpdating(false)
       return
     }
-    const net = Number(record.net_salary) || 0
-    const { error: expenseErr } = await supabase.from('expenses').insert({
-      date: new Date().toISOString().split('T')[0],
-      category: 'salary',
-      description: `Employee payroll — ${record.employees?.name || 'employee'}`,
-      amount: net,
-      payment_method: record.payment_method || 'cash',
-    })
-    if (expenseErr) {
-      alert(`Marked as paid, but the matching expense record failed to save (${expenseErr.message}). Please add it manually in Expenses so the books stay accurate.`)
-    }
+    setJustPaid(true)
     onUpdated()
     setUpdating(false)
-    onClose()
   }
 
   return (
@@ -226,7 +214,10 @@ export function EmployeePayrollDetail({ record, onClose, onUpdated }) {
             </div>
           )}
         </div>
-        {record.status === 'pending' && (
+        {(record.status === 'paid' || justPaid) && (
+          <VoucherButton sourceType="employee_payroll" sourceId={record.id} />
+        )}
+        {record.status === 'pending' && !justPaid && (
           <button onClick={markPaid} disabled={updating}
             className="w-full bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-bold py-3.5 rounded-2xl disabled:opacity-50">
             {updating ? 'Updating…' : '✓ Mark as Paid'}
