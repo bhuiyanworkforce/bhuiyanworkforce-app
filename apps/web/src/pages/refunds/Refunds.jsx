@@ -33,12 +33,24 @@ function AddRefundModal({ onClose, onSaved }) {
   useEffect(() => {
     supabase.from('candidates').select('id, full_name').is('archived_at', null).order('full_name')
       .then(({ data }) => setCandidates(data || []))
-    supabase.from('invoices').select('id, invoice_no, total').eq('status', 'paid')
-      .then(({ data }) => setInvoices(data || []))
   }, [])
+
+  // Only the selected candidate's invoices (with money received) can be refunded.
+  useEffect(() => {
+    setInvoices([])
+    if (!form.candidate_id) return
+    let cancelled = false
+    supabase.from('invoices').select('id, invoice_no, total, status')
+      .eq('candidate_id', form.candidate_id)
+      .in('status', ['paid', 'partial'])
+      .order('issued_at', { ascending: false })
+      .then(({ data }) => { if (!cancelled) setInvoices(data || []) })
+    return () => { cancelled = true }
+  }, [form.candidate_id])
 
   async function handleSave() {
     if (!form.amount || !form.reason) { setError('Amount and reason required'); return }
+    if (form.invoice_id && !form.candidate_id) { setError('Select the candidate first'); return }
     setLoading(true); setError('')
     const { error: err } = await supabase.from('refunds').insert({
       amount: Number.parseFloat(form.amount),
@@ -79,15 +91,15 @@ function AddRefundModal({ onClose, onSaved }) {
           {error && <p className="text-red-400 text-sm bg-red-500/10 px-4 py-2 rounded-xl">{error}</p>}
           <label className="flex flex-col gap-1">
             <span className="text-xs text-slate-500 font-semibold">Candidate</span>
-            <select value={form.candidate_id} onChange={e => set('candidate_id', e.target.value)} className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500">
+            <select value={form.candidate_id} onChange={e => setForm(p => ({ ...p, candidate_id: e.target.value, invoice_id: '' }))} className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500">
               <option value="">— Select candidate —</option>
               {candidates.map(c => <option key={c.id} value={c.id}>{c.full_name}</option>)}
             </select>
           </label>
           <label className="flex flex-col gap-1">
             <span className="text-xs text-slate-500 font-semibold">Invoice (optional)</span>
-            <select value={form.invoice_id} onChange={e => set('invoice_id', e.target.value)} className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500">
-              <option value="">— No invoice —</option>
+            <select value={form.invoice_id} onChange={e => set('invoice_id', e.target.value)} disabled={!form.candidate_id} className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500">
+              <option value="">{!form.candidate_id ? '— Select a candidate first —' : invoices.length ? '— No invoice —' : '— No paid invoices for this candidate —'}</option>
               {invoices.map(inv => <option key={inv.id} value={inv.id}>{inv.invoice_no} — ৳{Number.parseFloat(inv.total||0).toLocaleString()}</option>)}
             </select>
           </label>
