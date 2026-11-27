@@ -64,7 +64,7 @@ Deno.serve(async (req) => {
   let html    = ''
 
   if (type === 'passport_expiring') {
-    subject = `⚠️ Passport Expiring Soon — ${escHtml(data.candidate_name)}`
+    subject = `⚠️ Passport Expiring Soon — ${String(data.candidate_name ?? '').replace(/[\r\n]+/g, ' ')}`
     html = `
       <p>The passport <strong>${escHtml(data.passport_no)}</strong>
       for candidate <strong>${escHtml(data.candidate_name)}</strong>
@@ -72,7 +72,7 @@ Deno.serve(async (req) => {
       <p>Please take action immediately.</p>`
 
   } else if (type === 'invoice_overdue') {
-    subject = `🔴 Overdue Invoice — ${escHtml(data.invoice_no)}`
+    subject = `🔴 Overdue Invoice — ${String(data.invoice_no ?? '').replace(/[\r\n]+/g, ' ')}`
     html = `
       <p>Invoice <strong>${escHtml(data.invoice_no)}</strong>
       for <strong>${escHtml(data.candidate_name)}</strong>
@@ -80,7 +80,7 @@ Deno.serve(async (req) => {
       is overdue since <strong>${escHtml(data.due_date)}</strong>.</p>`
 
   } else if (type === 'payment_received') {
-    subject = `✅ Payment Received — ${escHtml(data.invoice_no)}`
+    subject = `✅ Payment Received — ${String(data.invoice_no ?? '').replace(/[\r\n]+/g, ' ')}`
     html = `
       <p>Payment of <strong>৳${escHtml(data.amount)}</strong>
       received for invoice <strong>${escHtml(data.invoice_no)}</strong>.
@@ -107,9 +107,17 @@ Deno.serve(async (req) => {
     }),
   })
 
-  const result = await res.json()
-  return new Response(JSON.stringify(result), {
-    status: res.ok ? 200 : res.status,
+  const result = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    // Log the provider's detail server-side; don't hand it back to the caller.
+    console.error('[send-notification] Resend error', res.status, JSON.stringify(result))
+    return new Response(JSON.stringify({ error: 'Email provider rejected the message' }), {
+      status: 502,
+      headers,
+    })
+  }
+  return new Response(JSON.stringify({ success: true, id: result?.id ?? null }), {
+    status: 200,
     headers,
   })
 })
