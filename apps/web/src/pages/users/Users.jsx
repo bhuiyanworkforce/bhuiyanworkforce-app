@@ -2,8 +2,20 @@ import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../../lib/supabase'
 import { Plus, X, AlertCircle, RefreshCw, Shield, Mail, Users, Trash2 } from 'lucide-react'
 import { ListSkeleton } from '../../components/Skeleton'
+import { useAuth } from '../../hooks/useAuth'
 
 const APP_ROLES = ['manager', 'agent', 'assistant']
+
+// Hierarchy (mirrors the API, which enforces it): owner > manager > others.
+// Owners manage everyone except owners. Managers only manage accounts below
+// manager level and cannot assign the manager role.
+function rolesAssignableBy(callerRole) {
+  return callerRole === 'owner' ? APP_ROLES : APP_ROLES.filter(r => r !== 'manager')
+}
+function canManageUser(callerRole, targetRole) {
+  if (targetRole === 'owner') return false
+  return callerRole === 'owner' || targetRole !== 'manager'
+}
 
 // The stored role value is still literally 'agent' (sub-agent portal login) —
 // only the label shown to people has changed, now that "Agent" means the
@@ -44,8 +56,9 @@ async function apiFetch(path, options = {}) {
 }
 
 // ── Create User Modal ─────────────────────────────────────────────────────────
-function CreateUserModal({ onClose, onSaved }) {
-  const [form, setForm]     = useState({ email: '', password: '', full_name: '', role: 'manager' })
+function CreateUserModal({ onClose, onSaved, callerRole }) {
+  const assignable = rolesAssignableBy(callerRole)
+  const [form, setForm]     = useState({ email: '', password: '', full_name: '', role: assignable[0] })
   const [saving, setSaving] = useState(false)
   const [error, setError]   = useState('')
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }))
@@ -130,7 +143,7 @@ function CreateUserModal({ onClose, onSaved }) {
               onChange={e => set('role', e.target.value)}
               className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500"
             >
-              {APP_ROLES.map(r => (
+              {assignable.map(r => (
                 <option key={r} value={r}>{ROLE_LABELS[r] || r}</option>
               ))}
             </select>
@@ -151,8 +164,9 @@ function CreateUserModal({ onClose, onSaved }) {
 }
 
 // ── Change Role Modal ─────────────────────────────────────────────────────────
-function ChangeRoleModal({ user, onClose, onSaved }) {
-  const [role, setRole]     = useState(user.role || 'manager')
+function ChangeRoleModal({ user, onClose, onSaved, callerRole }) {
+  const assignable = rolesAssignableBy(callerRole)
+  const [role, setRole]     = useState(user.role || assignable[0])
   const [saving, setSaving] = useState(false)
   const [error, setError]   = useState('')
 
@@ -195,7 +209,7 @@ function ChangeRoleModal({ user, onClose, onSaved }) {
               onChange={e => setRole(e.target.value)}
               className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500"
             >
-              {APP_ROLES.map(r => (
+              {assignable.map(r => (
                 <option key={r} value={r}>{ROLE_LABELS[r] || r}</option>
               ))}
             </select>
@@ -273,6 +287,8 @@ function DeleteConfirmModal({ user, onClose, onDeleted }) {
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export default function UsersPage() {
+  const { profile } = useAuth()
+  const callerRole = profile?.role
   const [users, setUsers]             = useState([])
   const [loading, setLoading]         = useState(true)
   const [error, setError]             = useState('')
@@ -364,7 +380,7 @@ export default function UsersPage() {
                 {/* Left: avatar + info — tappable to change role */}
                 <button
                   type="button"
-                  onClick={() => user.role !== 'owner' && setEditUser(user)}
+                  onClick={() => canManageUser(callerRole, user.role) && setEditUser(user)}
                   className="flex items-center gap-3 min-w-0 flex-1 text-left"
                 >
                   <div className="w-9 h-9 rounded-full bg-indigo-500/20 flex items-center justify-center flex-none">
@@ -388,7 +404,7 @@ export default function UsersPage() {
                   <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${ROLE_STYLES[user.role] || 'bg-slate-700 text-slate-300'}`}>
                     {ROLE_LABELS[user.role] || user.role || 'No role'}
                   </span>
-                  {user.role !== 'owner' && (
+                  {canManageUser(callerRole, user.role) && (
                     <button
                       type="button"
                       onClick={() => setDeleteUser(user)}
@@ -406,10 +422,10 @@ export default function UsersPage() {
       </div>
 
       {showCreate && (
-        <CreateUserModal onClose={() => setShowCreate(false)} onSaved={handleSaved} />
+        <CreateUserModal onClose={() => setShowCreate(false)} onSaved={handleSaved} callerRole={callerRole} />
       )}
       {editUser && (
-        <ChangeRoleModal user={editUser} onClose={() => setEditUser(null)} onSaved={handleSaved} />
+        <ChangeRoleModal user={editUser} onClose={() => setEditUser(null)} onSaved={handleSaved} callerRole={callerRole} />
       )}
       {deleteUser && (
         <DeleteConfirmModal user={deleteUser} onClose={() => setDeleteUser(null)} onDeleted={handleDeleted} />
