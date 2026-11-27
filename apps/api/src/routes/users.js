@@ -5,9 +5,28 @@ const app = new Hono()
 
 const VALID_ROLES = ['manager', 'agent', 'assistant']
 
+// Hierarchy: owner > manager > (agent, assistant, client).
+// - An owner can create/change/delete anyone except other owners.
+// - A manager can only create, change and delete accounts BELOW manager level,
+//   and can only assign roles below manager. Managers can never touch other
+//   managers or owners, and can never promote anyone to manager.
+const MANAGER_ASSIGNABLE_ROLES = ['agent', 'assistant']
+const MANAGER_MANAGEABLE_ROLES = ['agent', 'assistant', 'client']
+
+function canAssignRole(callerRole, role) {
+  if (callerRole === 'owner') return VALID_ROLES.includes(role)
+  return MANAGER_ASSIGNABLE_ROLES.includes(role)
+}
+
+function canManageTarget(callerRole, targetRole) {
+  if (targetRole === 'owner') return false
+  if (callerRole === 'owner') return true
+  return MANAGER_MANAGEABLE_ROLES.includes(targetRole)
+}
+
 app.onError((err, c) => {
   console.error('[users] Unhandled error:', err?.message ?? err)
-  return c.json({ error: err?.message ?? 'Internal server error' }, 500)
+  return c.json({ error: 'Internal server error' }, 500)
 })
 
 function getSupabase(env) {
@@ -17,11 +36,12 @@ function getSupabase(env) {
 async function getCallerProfile(c) {
   const authHeader = c.req.header('Authorization') ?? ''
   const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : ''
-  if (!token) return { error: 'Missing token' }
+  if (!token) return { error: 'Unauthorized' }
 
-  if (!c.env.SUPABASE_URL)         return { error: 'SUPABASE_URL not set' }
-  if (!c.env.SUPABASE_ANON_KEY)    return { error: 'SUPABASE_ANON_KEY not set' }
-  if (!c.env.SUPABASE_SERVICE_KEY) return { error: 'SUPABASE_SERVICE_KEY not set' }
+  if (!c.env.SUPABASE_URL || !c.env.SUPABASE_ANON_KEY || !c.env.SUPABASE_SERVICE_KEY) {
+    console.error('[users] Missing Supabase environment configuration')
+    return { error: 'Unauthorized' }
+  }
 
   const { data: { user }, error: authErr } = await createClient(
     c.env.SUPABASE_URL,
@@ -29,7 +49,10 @@ async function getCallerProfile(c) {
     { global: { headers: { Authorization: `Bearer ${token}` } } }
   ).auth.getUser()
 
-  if (authErr || !user) return { error: `Auth failed: ${authErr?.message ?? 'no user'}` }
+  if (authErr || !user) {
+    console.error('[users] Auth failed:', authErr?.message ?? 'no user')
+    return { error: 'Unauthorized' }
+  }
 
   const { data: profile, error: profileErr } = await getSupabase(c.env)
     .from('profiles')
@@ -37,7 +60,10 @@ async function getCallerProfile(c) {
     .eq('id', user.id)
     .single()
 
-  if (profileErr || !profile) return { error: `Profile fetch failed: ${profileErr?.message ?? 'not found'}` }
+  if (profileErr || !profile) {
+    console.error('[users] Profile fetch failed:', profileErr?.message ?? 'not found')
+    return { error: 'Unauthorized' }
+  }
 
   return { profile }
 }
@@ -55,12 +81,18 @@ app.get('/', async (c) => {
   const supabase = getSupabase(c.env)
 
   const { data: authData, error: authErr } = await supabase.auth.admin.listUsers({ page: 1, perPage: 1000 })
-  if (authErr) return c.json({ error: `listUsers failed: ${authErr.message}` }, 500)
+  if (authErr) {
+    console.error('[users] listUsers failed:', authErr.message)
+    return c.json({ error: 'Could not load users' }, 500)
+  }
 
   const { data: profiles, error: profileErr } = await supabase
     .from('profiles')
     .select('id, full_name, role')
-  if (profileErr) return c.json({ error: `profiles fetch failed: ${profileErr.message}` }, 500)
+  if (profileErr) {
+    console.error('[users] profiles fetch failed:', profileErr.message)
+    return c.json({ error: 'Could not load users' }, 500)
+  }
 
   const profileMap = {}
   for (const p of profiles ?? []) profileMap[p.id] = p
@@ -100,6 +132,9 @@ app.post('/', async (c) => {
   if (!VALID_ROLES.includes(role)) {
     return c.json({ error: `Invalid role. Must be one of: ${VALID_ROLES.join(', ')}` }, 400)
   }
+  if (!canAssignRole(caller.role, role)) {
+    return c.json({ error: 'Only the owner can create manager accounts' }, 403)
+  }
 
   const supabase = getSupabase(c.env)
 
@@ -115,7 +150,10 @@ app.post('/', async (c) => {
     },
   })
 
-  if (error) return c.json({ error: error.message }, 400)
+  if (error) {
+    console.error('[users] createUser failed:', error.message)
+    return c.json({ error: 'Could not create user. The email may already be registered.' }, 400)
+  }
 
   return c.json({ user: { id: data.user.id, email: data.user.email, role } })
 })
@@ -150,10 +188,17 @@ app.patch('/:id/role', async (c) => {
     .from('profiles')
     .select('role')
     .eq('id', targetId)
-    .single()
+    .maybeSingle()
 
-  if (target?.role === 'owner') {
+  if (!target) return c.json({ error: 'User not found' }, 404)
+  if (target.role === 'owner') {
     return c.json({ error: 'Cannot change the role of an owner' }, 403)
+  }
+  if (!canManageTarget(caller.role, target.role)) {
+    return c.json({ error: 'Only the owner can change a manager\'s role' }, 403)
+  }
+  if (!canAssignRole(caller.role, role)) {
+    return c.json({ error: 'Only the owner can assign the manager role' }, 403)
   }
 
   const { error } = await supabase
@@ -161,7 +206,10 @@ app.patch('/:id/role', async (c) => {
     .update({ role })
     .eq('id', targetId)
 
-  if (error) return c.json({ error: error.message }, 500)
+  if (error) {
+    console.error('[users] role update failed:', error.message)
+    return c.json({ error: 'Could not update role' }, 500)
+  }
 
   return c.json({ success: true })
 })
@@ -189,14 +237,21 @@ app.delete('/:id', async (c) => {
     .from('profiles')
     .select('role')
     .eq('id', targetId)
-    .single()
+    .maybeSingle()
 
-  if (target?.role === 'owner') {
+  if (!target) return c.json({ error: 'User not found' }, 404)
+  if (target.role === 'owner') {
     return c.json({ error: 'Cannot delete an owner account' }, 403)
+  }
+  if (!canManageTarget(caller.role, target.role)) {
+    return c.json({ error: 'Only the owner can delete a manager account' }, 403)
   }
 
   const { error } = await supabase.auth.admin.deleteUser(targetId)
-  if (error) return c.json({ error: error.message }, 500)
+  if (error) {
+    console.error('[users] deleteUser failed:', error.message)
+    return c.json({ error: 'Could not delete user' }, 500)
+  }
 
   return c.json({ success: true })
 })

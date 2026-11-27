@@ -49,21 +49,34 @@ async function checkRateLimit(env, userId) {
     return { allowed: true }
   }
 
-  const key      = `rl:passport-status:${userId}`
-  const existing = await env.RATE_LIMIT_KV.get(key)
-  const count    = existing ? parseInt(existing, 10) : 0
+  const key = `rl:passport-status:${userId}`
+  const now = Date.now()
+  const windowMs = RATE_LIMIT_WINDOW * 1000
 
-  if (count >= RATE_LIMIT_MAX) {
-    return { allowed: false, retryAfter: RATE_LIMIT_WINDOW }
+  // Value is "<count>:<windowStartMs>". The window start is stored IN the value
+  // so the window is enforced by us, not by KV expiry. Previously the counter
+  // was rewritten without expirationTtl after the first call, which strips the
+  // TTL in Cloudflare KV, so after 10 updates a user was locked out forever.
+  let count = 0
+  let windowStart = now
+  const existing = await env.RATE_LIMIT_KV.get(key)
+  if (existing) {
+    const [c, s] = existing.split(':').map(Number)
+    if (Number.isFinite(c) && Number.isFinite(s) && now - s < windowMs) {
+      count = c
+      windowStart = s
+    }
   }
 
-  // Increment counter; set TTL only on first request so the window is fixed.
-  // If we set expirationTtl on every put(), the window resets on each call —
-  // meaning a user could make 9 requests every 59 seconds indefinitely.
-  await env.RATE_LIMIT_KV.put(key, String(count + 1),
-    count === 0 ? { expirationTtl: RATE_LIMIT_WINDOW } : undefined
-  )
+  if (count >= RATE_LIMIT_MAX) {
+    const retryAfter = Math.max(1, Math.ceil((windowStart + windowMs - now) / 1000))
+    return { allowed: false, retryAfter }
+  }
 
+  // Always set a TTL (KV minimum is 60s) so stale keys clean themselves up.
+  await env.RATE_LIMIT_KV.put(key, `${count + 1}:${windowStart}`, {
+    expirationTtl: Math.max(60, RATE_LIMIT_WINDOW),
+  })
   return { allowed: true }
 }
 

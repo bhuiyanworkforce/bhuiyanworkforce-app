@@ -70,10 +70,14 @@ app.post('/send', async (c) => {
     })
 
     const data = await res.json()
-    if (!res.ok) return c.json({ error: data.message }, 400)
+    if (!res.ok) {
+      console.error('[notifications] Resend error:', data?.message)
+      return c.json({ error: 'Email provider rejected the message' }, 400)
+    }
     return c.json({ success: true, id: data.id })
   } catch (err) {
-    return c.json({ error: err.message }, 500)
+    console.error('[notifications] send failed:', err?.message ?? err)
+    return c.json({ error: 'Internal server error' }, 500)
   }
 })
 

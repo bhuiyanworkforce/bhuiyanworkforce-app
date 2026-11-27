@@ -21,7 +21,7 @@ const SENDER_ADDRESS = 'partnerships@bhuiyanworkforce.com'
 
 app.onError((err, c) => {
   console.error('[leads] Unhandled error:', err?.message ?? err)
-  return c.json({ error: err?.message ?? 'Internal server error' }, 500)
+  return c.json({ error: 'Internal server error' }, 500)
 })
 
 function getSupabase(env) {
