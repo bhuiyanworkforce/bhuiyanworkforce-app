@@ -33,6 +33,7 @@ export default function Dashboard() {
     overdueCount: 0, overdueAmount: 0,
     chequesReceivable: 0, chequesPayable: 0,
     thisMonthExpenses: 0,
+    receivedTotal: 0, refundsTotal: 0, expensesTotal: 0,
   })
   const [workflowCounts, setWorkflowCounts] = useState([])
   const [expiringPassports, setExpiringPassports] = useState([])
@@ -70,9 +71,11 @@ export default function Dashboard() {
         hideFinance ? Promise.resolve({ data: [], error: null }) : supabase.from('cheques').select('amount, type, status').limit(500),
         hideFinance ? Promise.resolve({ data: [], error: null }) : supabase.from('expenses').select('amount').gte('date',
           new Date(new Date(nowMs).getFullYear(), new Date(nowMs).getMonth(), 1).toISOString().split('T')[0]),
+        // All-time money received, refunds paid and expenses (computed in the database)
+        hideFinance ? Promise.resolve({ data: null, error: null }) : supabase.rpc('finance_summary'),
       ])
 
-      const [r0, r1, r2, r3, r4, r5, r6, r7, r8, r9] = results
+      const [r0, r1, r2, r3, r4, r5, r6, r7, r8, r9, r10] = results
 
       const totalPassports  = settled(r0, { count: 0 }).count
       const activeVisa      = settled(r1, { count: 0 }).count
@@ -84,6 +87,8 @@ export default function Dashboard() {
       const recentLogs      = settled(r7, { data: [] }).data
       const chequesData     = settled(r8, { data: [] }).data
       const monthExpenses   = settled(r9, { data: [] }).data
+      const finRaw          = settled(r10, { data: null }).data
+      const fin             = Array.isArray(finRaw) ? finRaw[0] : finRaw
 
       const counts = {}
       passportData?.forEach(p => { counts[p.status] = (counts[p.status] || 0) + 1 })
@@ -103,7 +108,10 @@ export default function Dashboard() {
         activeVisa: activeVisa || 0,
         totalCandidates: totalCandidates || 0,
         totalAgents: totalAgents || 0,
-        totalRevenue: paid,
+        totalRevenue: fin ? safeFloat(fin.revenue) - safeFloat(fin.refunds) : paid,
+        receivedTotal: fin ? safeFloat(fin.revenue) : paid,
+        refundsTotal: fin ? safeFloat(fin.refunds) : 0,
+        expensesTotal: fin ? safeFloat(fin.expenses) : thisMonthExpenses,
         outstanding: unpaid,
         overdueCount: overdueInvs.length,
         overdueAmount: overdueInvs.reduce((s, i) => s + safeFloat(i.total), 0),
@@ -203,26 +211,34 @@ export default function Dashboard() {
           <div className="px-4 py-3 border-b border-slate-800"><h3 className="text-sm font-bold text-slate-300">Financial Summary</h3></div>
           <div className="divide-y divide-slate-800">
             <div className="flex justify-between items-center px-4 py-3">
-              <span className="text-slate-400 text-sm">Revenue (paid invoices)</span>
-              <span className="text-emerald-400 font-bold text-sm">+৳{stats.totalRevenue.toLocaleString()}</span>
+              <span className="text-slate-400 text-sm">Money received</span>
+              <span className="text-emerald-400 font-bold text-sm">+৳{stats.receivedTotal.toLocaleString()}</span>
             </div>
             <div className="flex justify-between items-center px-4 py-3">
-              <span className="text-slate-400 text-sm">Expenses this month</span>
-              <span className="text-rose-400 font-bold text-sm">-৳{stats.thisMonthExpenses.toLocaleString()}</span>
+              <span className="text-slate-400 text-sm">Refunds paid</span>
+              <span className="text-rose-400 font-bold text-sm">-৳{stats.refundsTotal.toLocaleString()}</span>
             </div>
             <div className="flex justify-between items-center px-4 py-3">
-              <span className="text-slate-400 text-sm">Cheques receivable</span>
+              <span className="text-slate-400 text-sm">Expenses (all time)</span>
+              <span className="text-rose-400 font-bold text-sm">-৳{stats.expensesTotal.toLocaleString()}</span>
+            </div>
+            <div className="flex justify-between items-center px-4 py-3">
+              <span className="text-slate-500 text-xs">of which this month</span>
+              <span className="text-slate-400 text-xs font-semibold">৳{stats.thisMonthExpenses.toLocaleString()}</span>
+            </div>
+            <div className="flex justify-between items-center px-4 py-3 bg-slate-800/50">
+              <span className="text-slate-200 text-sm font-bold">Profit so far</span>
+              <span className={`font-extrabold text-sm ${(stats.totalRevenue - stats.expensesTotal) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                ৳{(stats.totalRevenue - stats.expensesTotal).toLocaleString()}
+              </span>
+            </div>
+            <div className="flex justify-between items-center px-4 py-3">
+              <span className="text-slate-400 text-sm">Cheques receivable (pending)</span>
               <span className="text-blue-400 font-bold text-sm">+৳{stats.chequesReceivable.toLocaleString()}</span>
             </div>
             <div className="flex justify-between items-center px-4 py-3">
-              <span className="text-slate-400 text-sm">Cheques payable</span>
+              <span className="text-slate-400 text-sm">Cheques payable (pending)</span>
               <span className="text-orange-400 font-bold text-sm">-৳{stats.chequesPayable.toLocaleString()}</span>
-            </div>
-            <div className="flex justify-between items-center px-4 py-3 bg-slate-800/50">
-              <span className="text-slate-200 text-sm font-bold">Net Position</span>
-              <span className={`font-extrabold text-sm ${(stats.totalRevenue - stats.thisMonthExpenses + stats.chequesReceivable - stats.chequesPayable) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                ৳{(stats.totalRevenue - stats.thisMonthExpenses + stats.chequesReceivable - stats.chequesPayable).toLocaleString()}
-              </span>
             </div>
           </div>
         </div>
