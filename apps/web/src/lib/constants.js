@@ -102,7 +102,7 @@ export const EXPENSE_CAT_COLOR = {
 export const VENDOR_CATEGORIES = ['general', 'embassy', 'medical', 'travel', 'printing', 'bank', 'other']
 
 // ─── Employee roles ────────────────────────────────────────────────────────────
-export const EMPLOYEE_ROLES = ['manager', 'accountant', 'visa_officer', 'passport_officer', 'receptionist', 'driver', 'peon', 'other']
+export const EMPLOYEE_ROLES = ['manager', 'accountant', 'assistant', 'visa_officer', 'passport_officer', 'receptionist', 'driver', 'peon', 'other']
 
 // ─── Job categories (mirrors supabase seed data) ───────────────────────────────
 // Used as fallback when DB is unavailable and for display references.
