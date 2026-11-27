@@ -2,13 +2,14 @@ import PropTypes from 'prop-types'
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../../lib/supabase'
 import { Plus, Search, TrendingDown, X } from 'lucide-react'
-import { EXPENSE_CATEGORIES as CATEGORIES, EXPENSE_CAT_COLOR as CAT_COLOR } from '../../lib/constants'
+import { EXPENSE_CATEGORIES as CATEGORIES, MANUAL_EXPENSE_CATEGORIES, EXPENSE_CAT_COLOR as CAT_COLOR } from '../../lib/constants'
+import VoucherButton from '../../components/VoucherButton'
 import { ListSkeleton } from '../../components/Skeleton'
 
 const PAGE_SIZE = 25
 
 function AddExpenseModal({ onClose, onSaved }) {
-  const [form, setForm] = useState({ date: new Date().toISOString().slice(0,10), category:'other', description:'', amount:'', payment_method:'cash', reference_no:'', vendor_id:'' })
+  const [form, setForm] = useState({ date: new Date().toISOString().slice(0,10), category:'other', payee_name:'', description:'', amount:'', payment_method:'cash', reference_no:'', vendor_id:'' })
   const [vendors, setVendors] = useState([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -28,7 +29,7 @@ function AddExpenseModal({ onClose, onSaved }) {
   async function handleSave() {
     if (!form.description || !form.amount) { setError('Description and amount required'); return }
     setSaving(true)
-    const { error: err } = await supabase.from('expenses').insert({ ...form, amount: Number.parseFloat(form.amount), vendor_id: form.vendor_id||null, reference_no: form.reference_no||null })
+    const { error: err } = await supabase.from('expenses').insert({ ...form, amount: Number.parseFloat(form.amount), vendor_id: form.vendor_id||null, reference_no: form.reference_no||null, payee_name: form.payee_name||null })
     if (err) { setError(err.message); setSaving(false); return }
     onSaved()
   }
@@ -50,13 +51,18 @@ function AddExpenseModal({ onClose, onSaved }) {
             <label className="flex flex-col gap-1">
               <span className="text-xs text-slate-500 font-semibold">Category</span>
               <select value={form.category} onChange={e=>set('category',e.target.value)} className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500">
-                {CATEGORIES.map(c=><option key={c} value={c}>{c.replaceAll('_',' ')}</option>)}
+                {MANUAL_EXPENSE_CATEGORIES.map(c=><option key={c} value={c}>{c.replaceAll('_',' ')}</option>)}
               </select>
             </label>
           </div>
           <label className="flex flex-col gap-1">
             <span className="text-xs text-slate-500 font-semibold">Description *</span>
             <input value={form.description} onChange={e=>set('description',e.target.value)} placeholder="What was this for?" className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500" />
+          </label>
+          <p className="text-[11px] text-slate-500 -mt-2">Salary and commission are not entered here. They appear automatically when you pay them in Payroll or Sub Agents.</p>
+          <label className="flex flex-col gap-1">
+            <span className="text-xs text-slate-500 font-semibold">Paid to</span>
+            <input value={form.payee_name} onChange={e=>set('payee_name',e.target.value)} placeholder="Who received the money (printed on the voucher)" className="bg-slate-900 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500" />
           </label>
           <label className="flex flex-col gap-1">
             <span className="text-xs text-slate-500 font-semibold">Amount (৳) *</span>
@@ -184,11 +190,15 @@ export default function Expenses() {
                   <div className="flex items-center gap-2 mb-0.5">
                     <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${CAT_COLOR[e.category]||CAT_COLOR.other}`}>{e.category?.replaceAll('_',' ')}</span>
                     {e.vendors?.name && <span className="text-[10px] text-slate-500">{e.vendors.name}</span>}
+                    {e.source_type && <span className="text-[10px] text-slate-500">auto</span>}
                   </div>
                   <p className="text-slate-200 text-sm font-semibold truncate">{e.description}</p>
-                  <p className="text-slate-500 text-xs">{new Date(e.date).toLocaleDateString()} · {e.payment_method}</p>
+                  <p className="text-slate-500 text-xs">{new Date(e.date).toLocaleDateString()} · {e.payment_method}{e.voucher_no ? ` · ${e.voucher_no}` : ''}</p>
                 </div>
-                <p className="text-rose-400 font-bold text-sm flex-none">৳{Number.parseFloat(e.amount).toLocaleString()}</p>
+                <div className="flex flex-col items-end gap-1.5 flex-none">
+                  <p className="text-rose-400 font-bold text-sm">৳{Number.parseFloat(e.amount).toLocaleString()}</p>
+                  {e.voucher_no && <VoucherButton expense={e} compact />}
+                </div>
               </li>
             ))}</ul>
           )}
