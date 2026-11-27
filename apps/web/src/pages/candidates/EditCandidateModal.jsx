@@ -32,12 +32,21 @@ export default function EditCandidateModal({ candidate, onClose, onSaved }) {
   async function handleSave() {
     if (!form.full_name.trim()) { setError('Name is required'); return }
     setSaving(true)
+    // Empty optional fields must be sent as null, not '' — Postgres rejects an
+    // empty string for a date column ("invalid input syntax for type date"),
+    // which made every edit fail for candidates with no date of birth.
+    const payload = {
+      ...form,
+      name: form.full_name,
+      date_of_birth: form.date_of_birth || null,
+      sub_agent_id: form.sub_agent_id || null,
+    }
     const { error: err } = await supabase
       .from('candidates')
-      .update({ ...form, name: form.full_name, sub_agent_id: form.sub_agent_id || null })
+      .update(payload)
       .eq('id', candidate.id)
     if (err) { setError(err.message); setSaving(false); return }
-    onSaved({ ...candidate, ...form })
+    onSaved({ ...candidate, ...payload })
   }
 
   // The mapped fields — each gets an explicit id so <label htmlFor> can reference it
@@ -106,7 +115,7 @@ export default function EditCandidateModal({ candidate, onClose, onSaved }) {
               htmlFor="edit-candidate-sub_agent_id"
               className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-1.5"
             >
-              Agent
+              Sub Agent
             </label>
             <select
               id="edit-candidate-sub_agent_id"

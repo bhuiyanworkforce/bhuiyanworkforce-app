@@ -574,6 +574,7 @@ export default function CandidateDetail({ candidate: initialCandidate, onClose, 
             )}
           </div>
 
+          {!viewOnly && (<>
           <div className="flex gap-2 overflow-x-auto scrollbar-hide">
             {['passports', 'invoices', 'documents'].map(t => (
               <button key={t} onClick={() => setTab(t)}
@@ -591,6 +592,7 @@ export default function CandidateDetail({ candidate: initialCandidate, onClose, 
           ) : (
             renderTabContent()
           )}
+          </>)}
         </div>
       </div>
 
