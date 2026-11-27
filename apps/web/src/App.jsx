@@ -123,7 +123,6 @@ const Profile          = lazyWithRetry(() => import('./pages/profile/Profile'), 
 const Reports          = lazyWithRetry(() => import('./pages/reports/Reports'),             'reports')
 const Expenses         = lazyWithRetry(() => import('./pages/expenses/Expenses'),           'expenses')
 const Vendors          = lazyWithRetry(() => import('./pages/vendors/Vendors'),             'vendors')
-const Loans            = lazyWithRetry(() => import('./pages/loans/Loans'),                 'loans')
 const Cheques          = lazyWithRetry(() => import('./pages/cheques/Cheques'),             'cheques')
 const Payroll          = lazyWithRetry(() => import('./pages/payroll/Payroll'),             'payroll')
 const Refunds          = lazyWithRetry(() => import('./pages/refunds/Refunds'),             'refunds')
@@ -177,7 +176,7 @@ export default function App() {
               <Route path="profile"    element={<Profile />} />
               <Route path="expenses"   element={<Expenses />} />
               <Route path="vendors"    element={<Vendors />} />
-              <Route path="loans"      element={<Loans />} />
+              <Route path="loans"      element={<Navigate to="/expenses" replace />} />
               <Route path="cheques"    element={<Cheques />} />
               <Route path="payroll"    element={<Payroll />} />
               <Route path="refunds"    element={<Refunds />} />
